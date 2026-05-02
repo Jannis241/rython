@@ -5,59 +5,45 @@ true
 false
 null
 
-.245
-0.356
-234
-
-float
 int
-string
-char
+float
 bool
+char
 
-floats
-ints
-strings
-chars
-bools
-floatss
-...
+!asm {
+    //z.B. print:
 
-strings ident  = ["sdkje"];
-ident[0] // erstes element
-ident[-1] // lletztes element
-ident[-2] // vorletzte element
-...
+section .data
+    msg db "Hello World", 10   ; 10 = '\n'
+    len equ $ - msg            ; Länge berechnen
 
+section .text
+    global _start
 
-expr + expr
-expr - expr
-expr / expr
-expr * expr
+_start:
+    mov rax, 1        ; syscall: write
+    mov rdi, 1        ; fd = 1 (stdout)
+    mov rsi, msg      ; pointer auf string
+    mov rdx, len      ; länge
+    syscall
+
+    mov rax, 60       ; syscall: exit
+    xor rdi, rdi      ; exit code 0
+    syscall
+}
+
 
 ident += expr
 ident -= expr
-ident /= expr
 ident *= expr
+ident /= expr
 
-ident++
-ident--
+expr + expr
+expr - expr
+expr * expr
+expr / expr
 
 expr == expr
-expr != expr
-expr >= expr
-expr <= expr
-expr < expr
-expr > expr
-
-expr && expr
-expr || expr
-!expr
-
-expr & expr
-expr | expr
-expr >> expr
-expr << expr
 
 global type ident = expr;
 const type ident = expr;
@@ -91,14 +77,13 @@ fn ident(type ident, ) type {
     for (idx, ident) in enumerate(expr) {
 
     }
-    for ident in expr { //
+    for ident in expr { // -> loop { ident = expr.next() } c.a.
         ident = expr //ändert nichts direkt
 
     }
 
-    person ident = person.new() //hat default constructor aber kann auch überschrieben werden
-    ident.get_name();
-    person.get_name(ident);
+    person malte = person.new() //hat default constructor aber kann auch überschrieben werden
+    malte.get_name(); -> ident.get_name(ident);
 
     Option ident = Option.Some;
     ident = Option.None;
@@ -107,11 +92,9 @@ fn ident(type ident, ) type {
     return ident;
 }
 
-import ident;
-import ident.ident;
 
 struct person {
-    type ident,
+    string name,
     type ident,
     any auto ident,
 
@@ -119,7 +102,16 @@ struct person {
 
     }
 
+    fn #this+rhs# add(rhs) >> type {
+
+    }
+
+    fn #this[idx]# index(idx) >> type {
+
+    }
+
     fn get_name(this) >> type {
+        this.name = "flk"; //mutatable
 
     }
 }
@@ -146,5 +138,6 @@ variant Option {
     Some,
     None
 }
+
 
 
