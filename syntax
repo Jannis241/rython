@@ -1,0 +1,150 @@
+type ident = expr;
+ident = expr;
+
+true
+false
+null
+
+.245
+0.356
+234
+
+float
+int
+string
+char
+bool
+
+floats
+ints
+strings
+chars
+bools
+floatss
+...
+
+strings ident  = ["sdkje"];
+ident[0] // erstes element
+ident[-1] // lletztes element
+ident[-2] // vorletzte element
+...
+
+
+expr + expr
+expr - expr
+expr / expr
+expr * expr
+
+ident += expr
+ident -= expr
+ident /= expr
+ident *= expr
+
+ident++
+ident--
+
+expr == expr
+expr != expr
+expr >= expr
+expr <= expr
+expr < expr
+expr > expr
+
+expr && expr
+expr || expr
+!expr
+
+expr & expr
+expr | expr
+expr >> expr
+expr << expr
+
+global type ident = expr;
+const type ident = expr;
+
+fn ident(type ident, ) type {
+
+    if expr {
+
+    }
+    else if expr {
+
+    }
+    else {
+
+    }
+
+    while expr {
+
+    }
+
+
+
+    loop {
+        break;
+        continue;
+
+    }
+
+    (string a, string b) = ("jaja", "diese bockt");
+
+    for (idx, ident) in enumerate(expr) {
+
+    }
+    for ident in expr { //
+        ident = expr //ändert nichts direkt
+
+    }
+
+    person ident = person.new() //hat default constructor aber kann auch überschrieben werden
+    ident.get_name();
+    person.get_name(ident);
+
+    Option ident = Option.Some;
+    ident = Option.None;
+
+
+    return ident;
+}
+
+import ident;
+import ident.ident;
+
+struct person {
+    type ident,
+    type ident,
+    any auto ident,
+
+    fn new() >> type {
+
+    }
+
+    fn get_name(this) >> type {
+
+    }
+}
+
+
+trait auto {
+    fn idx(this) >> type;
+}
+
+impl auto for person {
+    fn idx(this) >> type {
+
+    }
+}
+
+
+variant ident {
+    ident,
+    ident,
+    ident,
+}
+
+variant Option {
+    Some,
+    None
+}
+
+
