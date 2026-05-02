@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "crates/rython_cli",
+    "crates/rython_to_ir",
+    "crates/ir_to_assembly",
+    "crates/manager",
+]
+resolver = "2"

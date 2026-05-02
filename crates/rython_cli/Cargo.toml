@@ -1,0 +1,9 @@
+[package]
+name = "rython_cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ir_to_assembly = { version = "0.1.0", path = "../ir_to_assembly" }
+manager = { version = "0.1.0", path = "../manager" }
+rython_to_ir = { version = "0.1.0", path = "../rython_to_ir" }
