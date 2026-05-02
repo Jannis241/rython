@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rython_to_ir = { path = "../rython_to_ir" }
+ir_to_assembly = { path = "../ir_to_assembly" }
