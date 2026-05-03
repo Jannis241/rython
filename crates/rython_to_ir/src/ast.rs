@@ -36,6 +36,7 @@ pub struct Function {
     pub params: Vec<Param>,
     pub body: Block,
     pub return_type: Option<Type>,
+    pub operator: Option<String>,
 }
 #[derive(Debug)]
 pub struct Block {
@@ -61,6 +62,7 @@ pub struct FunctionSignature {
     pub generic_params: Vec<GenericParam>,
     pub params: Vec<Param>,
     pub return_type: Option<Type>,
+    pub operator: Option<String>,
 }
 //-----------------Trait-----------------------
 
@@ -217,7 +219,7 @@ pub enum Expr {
 
     IntLiteral(String),
     FloatLiteral(String),
-    BoolLiteral(b),
+    BoolLiteral(bool),
     StringLiteral(String),
     ListLiteral(Vec<Box<Expr>>),
     StructLiteral {

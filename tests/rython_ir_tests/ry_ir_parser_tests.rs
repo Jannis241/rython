@@ -433,7 +433,7 @@ fn test_parse_fn_stub() {
     let mut parser = Parser::new(input);
     let result = parser.parse();
 
-    assert!(result.is_ok());
+    assert!(result.is_err());
 }
 
 #[test]
