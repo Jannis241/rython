@@ -7,6 +7,7 @@ pub enum ParseError {
     UnexpectedToken {
         expected: TokenKind,
         found: TokenKind,
+        token_idx: usize,
     },
     UnexpectedTopLevel(TokenKind),
     UnexpectedEof,
@@ -57,7 +58,11 @@ impl Parser {
     fn expect_current(&self, expected: TokenKind) -> Result<(), ParseError> {
         let found = self.current()?.kind;
         if found != expected {
-            return Err(ParseError::UnexpectedToken { expected, found });
+            return Err(ParseError::UnexpectedToken {
+                expected,
+                found,
+                token_idx: self.current_idx,
+            });
         }
         Ok(())
     }

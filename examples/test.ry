@@ -1,0 +1,4 @@
+fn operator[] main(myparam: any car) T {
+    print("hello");
+    let x: int = 10;
+}
