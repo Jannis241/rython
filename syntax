@@ -5,6 +5,10 @@ true
 false
 null
 
+"lkjfad"
+'a'
+[",df", "kj"]
+
 123.456
 1234567
 
@@ -122,6 +126,12 @@ struct person<T> {
 
     }
 
+
+    fn operator[] kjsdf(rhs) {
+
+    }
+
+
     fn get_name(this) type {
         this.name = "flk"; //mutatable
 
@@ -152,7 +162,6 @@ variant Option {
 }
 
 
-
 struct List<T: any auto> {
     ident: ident
 
@@ -166,3 +175,4 @@ impl add for List<T: any auto> {
 
     }
 }
+
