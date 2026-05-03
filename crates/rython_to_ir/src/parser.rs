@@ -1,8 +1,16 @@
-use std::thread::sleep_ms;
-
 use crate::ast::*;
 use crate::lexer::Token;
 use crate::lexer::TokenKind;
+
+#[derive(Debug)]
+pub enum ParseError {
+    UnexpectedToken {
+        expected: TokenKind,
+        found: TokenKind,
+    },
+    UnexpectedTopLevel(TokenKind),
+    UnexpectedEof,
+}
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -23,44 +31,51 @@ impl Parser {
         self.current_idx += 1;
     }
 
-    fn current(&self) -> Token {
-        self.tokens[self.current_idx].clone()
+    fn current(&self) -> Result<Token, ParseError> {
+        self.tokens
+            .get(self.current_idx)
+            .cloned()
+            .ok_or(ParseError::UnexpectedEof)
     }
 
-    fn peek(&self) -> Token {
-        self.tokens[self.current_idx + 1].clone()
+    fn peek(&self) -> Result<Token, ParseError> {
+        self.tokens
+            .get(self.current_idx + 1)
+            .cloned()
+            .ok_or(ParseError::UnexpectedEof)
     }
 
-    fn expect_current(&self, expected: TokenKind) {
-        assert_eq!(self.current().kind, expected);
+    fn expect_current(&self, expected: TokenKind) -> Result<(), ParseError> {
+        let found = self.current()?.kind;
+        if found != expected {
+            return Err(ParseError::UnexpectedToken { expected, found });
+        }
+        Ok(())
     }
 
-    fn expect_next(&self, expected: TokenKind) {
-        assert_eq!(self.peek().kind, expected);
-    }
-
-    fn parse_expr(&mut self) -> Expr {
+    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         todo!()
     }
 
-    fn parse_import(&mut self) {
-        self.expect_current(TokenKind::Import);
+    fn parse_import(&mut self) -> Result<(), ParseError> {
+        self.expect_current(TokenKind::Import)?;
         self.advance();
         let mut whole_path = String::new();
 
         loop {
-            self.expect_current(TokenKind::Ident);
-            let value = self.current().value;
+            self.expect_current(TokenKind::Ident)?;
+            let value = self.current()?.value;
             whole_path.push_str(value.as_str());
 
-            if self.peek().kind == TokenKind::Dot {
+            if self.peek()?.kind == TokenKind::Dot {
+                whole_path.push('.');
                 self.advance();
                 self.advance();
                 continue;
             }
 
             self.advance();
-            self.expect_current(TokenKind::Semicolon);
+            self.expect_current(TokenKind::Semicolon)?;
             self.advance();
             break;
         }
@@ -68,35 +83,40 @@ impl Parser {
         self.ast.push(Item::Import(Import {
             import_name: whole_path,
         }));
+        Ok(())
     }
-    fn parse_trait(&mut self) {}
-    fn parse_variant(&mut self) {
-        self.expect_current(TokenKind::Variant);
+
+    fn parse_trait(&mut self) -> Result<(), ParseError> {
+        Ok(())
+    }
+
+    fn parse_variant(&mut self) -> Result<(), ParseError> {
+        self.expect_current(TokenKind::Variant)?;
         self.advance();
-        self.expect_current(TokenKind::Ident);
-        let variant_name = self.current().value;
+        self.expect_current(TokenKind::Ident)?;
+        let variant_name = self.current()?.value;
         self.advance();
-        self.expect_current(TokenKind::LBrace);
+        self.expect_current(TokenKind::LBrace)?;
         self.advance();
 
         let mut cases = vec![];
 
         loop {
-            if self.current().kind == TokenKind::RBrace {
+            if self.current()?.kind == TokenKind::RBrace {
                 self.advance();
                 break;
             }
 
-            self.expect_current(TokenKind::Ident);
-            cases.push(self.current().value);
+            self.expect_current(TokenKind::Ident)?;
+            cases.push(self.current()?.value);
             self.advance();
 
-            if self.current().kind == TokenKind::RBrace {
+            if self.current()?.kind == TokenKind::RBrace {
                 self.advance();
                 break;
             }
 
-            self.expect_current(TokenKind::Comma);
+            self.expect_current(TokenKind::Comma)?;
             self.advance();
         }
 
@@ -104,32 +124,40 @@ impl Parser {
             variant_name,
             cases,
         }));
+        Ok(())
     }
-    fn parse_struct(&mut self) {}
-    fn parse_fn(&mut self) {}
-    fn parse_trait_implementation(&mut self) {}
 
-    pub fn parse(&mut self) -> &Vec<Item> {
+    fn parse_struct(&mut self) -> Result<(), ParseError> {
+        Ok(())
+    }
+
+    fn parse_fn(&mut self) -> Result<(), ParseError> {
+        Ok(())
+    }
+
+    fn parse_trait_implementation(&mut self) -> Result<(), ParseError> {
+        Ok(())
+    }
+
+    pub fn parse(&mut self) -> Result<&Vec<Item>, ParseError> {
         loop {
             if self.current_idx >= self.tokens.len() {
                 break;
             }
 
-            let curr_token = self.current();
-
-            match curr_token.kind {
-                TokenKind::Trait => self.parse_trait(),
-                TokenKind::Import => self.parse_import(),
-                TokenKind::Variant => self.parse_variant(),
-                TokenKind::Struct => self.parse_struct(),
-                TokenKind::Fn => self.parse_fn(),
-                TokenKind::Impl => self.parse_trait_implementation(),
+            match self.current()?.kind {
+                TokenKind::Trait => self.parse_trait()?,
+                TokenKind::Import => self.parse_import()?,
+                TokenKind::Variant => self.parse_variant()?,
+                TokenKind::Struct => self.parse_struct()?,
+                TokenKind::Fn => self.parse_fn()?,
+                TokenKind::Impl => self.parse_trait_implementation()?,
                 TokenKind::Eof => break,
-                TokenKind::Semicolon => continue,
-                other => panic!("unexpected Toke: {:?}", other),
-            };
+                TokenKind::Semicolon => self.advance(),
+                other => return Err(ParseError::UnexpectedTopLevel(other)),
+            }
         }
 
-        &self.ast
+        Ok(&self.ast)
     }
 }
