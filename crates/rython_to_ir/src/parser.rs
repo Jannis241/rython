@@ -35,7 +35,7 @@ impl Parser {
         assert_eq!(self.current().kind, expected);
     }
 
-    fn expect_next(&self, expected: Token) {
+    fn expect_next(&self, expected: TokenKind) {
         assert_eq!(self.peek().kind, expected);
     }
 
@@ -51,7 +51,7 @@ impl Parser {
         loop {
             self.expect_current(TokenKind::Ident);
             let value = self.current().value;
-            whole_path.push_str(value);
+            whole_path.push_str(value.as_str());
 
             if self.peek().kind == TokenKind::Dot {
                 self.advance();
@@ -59,7 +59,7 @@ impl Parser {
                 continue;
             }
 
-            self.expect_next(TokenKind::SemiColon);
+            self.expect_next(TokenKind::Semicolon);
             self.advance();
             break;
         }
