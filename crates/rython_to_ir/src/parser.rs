@@ -1,4 +1,8 @@
+use std::thread::sleep_ms;
+
+use crate::ast::*;
 use crate::lexer::Token;
+use crate::lexer::TokenKind;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -27,16 +31,41 @@ impl Parser {
         self.tokens[self.current_idx + 1].clone()
     }
 
-    fn expect_current(&self, expected: Token) {
-        assert_eq!(self.current(), expected);
+    fn expect_current(&self, expected: TokenKind) {
+        assert_eq!(self.current().kind, expected);
     }
+
     fn expect_next(&self, expected: Token) {
-        assert_eq!(self.peek(), expected);
+        assert_eq!(self.peek().kind, expected);
     }
 
-    fn parse_expr(&mut self) -> () {}
+    fn parse_expr(&mut self) -> Expr {
+        todo!()
+    }
 
-    fn parse_import(&mut self) {}
+    fn parse_import(&mut self) {
+        self.expect_current(TokenKind::Import);
+        self.advance();
+        let mut whole_path = String::new();
+
+        loop {
+            self.expect_current(TokenKind::Ident);
+            let value = self.current().value;
+            whole_path.push_str(value);
+
+            if self.peek().kind == TokenKind::Dot {
+                self.advance();
+                self.advance();
+                continue;
+            }
+
+            self.expect_next(TokenKind::SemiColon);
+            self.advance();
+            break;
+        }
+
+        self.advance();
+    }
     fn parse_trait(&mut self) {}
     fn parse_variant(&mut self) {}
     fn parse_struct(&mut self) {}
