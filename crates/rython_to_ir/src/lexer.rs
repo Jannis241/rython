@@ -3,10 +3,10 @@ pub enum Token {
     True,
     False,
     Ident(String),
-    Int(i32),
+    Int(i64),
     Float(f64),
     Bool(bool),
-    String(String),
+    StringLiteral(String),
     Char(char),
     Null,
 
@@ -18,6 +18,7 @@ pub enum Token {
     Any,
     Let,
     Fn,
+    This,
     In,
     Import,
     Struct,
@@ -27,6 +28,17 @@ pub enum Token {
     Continue,
     Break,
     Variant,
+    And,
+    Or,
+
+    Operator,
+
+    Amp,
+    Pipe,
+    Caret,
+    Tilde,
+    LtLt,
+    GtGt,
 
     LParen,
     RParen,
@@ -38,7 +50,8 @@ pub enum Token {
     Semicolon,
     Colon,
     Dot,
-    Arrow,
+
+    Asm,
 
     Eq,
     PlusEq,
@@ -57,10 +70,8 @@ pub enum Token {
     Plus,
     Minus,
     Star,
-    StarStar,
     Slash,
     Percent,
-
 
     Eof,
 }
