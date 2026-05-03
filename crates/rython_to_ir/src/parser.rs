@@ -59,15 +59,52 @@ impl Parser {
                 continue;
             }
 
-            self.expect_next(TokenKind::Semicolon);
+            self.advance();
+            self.expect_current(TokenKind::Semicolon);
             self.advance();
             break;
         }
 
-        self.advance();
+        self.ast.push(Item::Import(Import {
+            import_name: whole_path,
+        }));
     }
     fn parse_trait(&mut self) {}
-    fn parse_variant(&mut self) {}
+    fn parse_variant(&mut self) {
+        self.expect_current(TokenKind::Variant);
+        self.advance();
+        self.expect_current(TokenKind::Ident);
+        let variant_name = self.current().value;
+        self.advance();
+        self.expect_current(TokenKind::LBrace);
+        self.advance();
+
+        let mut cases = vec![];
+
+        loop {
+            if self.current().kind == TokenKind::RBrace {
+                self.advance();
+                break;
+            }
+
+            self.expect_current(TokenKind::Ident);
+            cases.push(self.current().value);
+            self.advance();
+
+            if self.current().kind == TokenKind::RBrace {
+                self.advance();
+                break;
+            }
+
+            self.expect_current(TokenKind::Comma);
+            self.advance();
+        }
+
+        self.ast.push(Item::Variant(Variant {
+            variant_name,
+            cases,
+        }));
+    }
     fn parse_struct(&mut self) {}
     fn parse_fn(&mut self) {}
     fn parse_trait_implementation(&mut self) {}
@@ -88,6 +125,7 @@ impl Parser {
                 TokenKind::Fn => self.parse_fn(),
                 TokenKind::Impl => self.parse_trait_implementation(),
                 TokenKind::Eof => break,
+                TokenKind::Semicolon => continue,
                 other => panic!("unexpected Toke: {:?}", other),
             };
         }
