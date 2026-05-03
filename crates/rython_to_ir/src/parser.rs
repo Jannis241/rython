@@ -80,14 +80,14 @@ impl Parser {
 
             let curr_token = self.current();
 
-            match curr_token {
-                Token::Trait => self.parse_trait(),
-                Token::Import => self.parse_import(),
-                Token::Variant => self.parse_variant(),
-                Token::Struct => self.parse_struct(),
-                Token::Fn => self.parse_fn(),
-                Token::Impl => self.parse_trait_implementation(),
-                Token::Eof => break,
+            match curr_token.kind {
+                TokenKind::Trait => self.parse_trait(),
+                TokenKind::Import => self.parse_import(),
+                TokenKind::Variant => self.parse_variant(),
+                TokenKind::Struct => self.parse_struct(),
+                TokenKind::Fn => self.parse_fn(),
+                TokenKind::Impl => self.parse_trait_implementation(),
+                TokenKind::Eof => break,
                 other => panic!("unexpected Toke: {:?}", other),
             };
         }
