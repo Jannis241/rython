@@ -1,9 +1,12 @@
-type ident = expr;
+let ident: type = expr;
 ident = expr;
 
 true
 false
 null
+
+123.456
+1234567
 
 int
 float
@@ -45,10 +48,10 @@ expr / expr
 
 expr == expr
 
-global type ident = expr;
-const type ident = expr;
+global ident: type = expr;
+const ident: type = expr;
 
-fn ident(type ident, ) type {
+fn ident(ident: type) type {
 
     if expr {
 
@@ -82,35 +85,44 @@ fn ident(type ident, ) type {
 
     }
 
-    person malte = person.new() //hat default constructor aber kann auch überschrieben werden
+    let malte: person<bool> = person.new() //hat default constructor aber kann auch überschrieben werden
     malte.get_name(); -> ident.get_name(ident);
 
-    Option ident = Option.Some;
+    let ident: Option = Option.Some;
     ident = Option.None;
+
+    let meineperson: person<int> = person.new();
 
 
     return ident;
 }
 
+fn irgendeinefucntion(car: any auto) {
 
-struct person {
+}
+
+struct List<T> {
+    start: int,
+    length: int,
+}
+
+struct String {
+    start: int,
+    length: int,
+}
+
+
+
+struct person<T> {
     string name,
     type ident,
     any auto ident,
 
-    fn new() >> type {
+    fn new() type {
 
     }
 
-    fn #this+rhs# add(rhs) >> type {
-
-    }
-
-    fn #this[idx]# index(idx) >> type {
-
-    }
-
-    fn get_name(this) >> type {
+    fn get_name(this) type {
         this.name = "flk"; //mutatable
 
     }
@@ -118,11 +130,11 @@ struct person {
 
 
 trait auto {
-    fn idx(this) >> type;
+    fn idx(this) type;
 }
 
 impl auto for person {
-    fn idx(this) >> type {
+    fn idx(this) type {
 
     }
 }
@@ -141,3 +153,16 @@ variant Option {
 
 
 
+struct List<T: any auto> {
+    ident: ident
+
+    fn new() T {
+
+    }
+}
+
+impl add for List<T: any auto> {
+    fn add(this, rhs: T) {
+
+    }
+}
