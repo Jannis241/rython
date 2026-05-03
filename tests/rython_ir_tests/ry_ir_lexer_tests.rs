@@ -15,8 +15,8 @@ fn assert_tokens(input: &str, expected: &[(TokenKind, &str)]) {
 }
 
 #[test]
-fn empty_input_returns_no_tokens() {
-    assert_tokens("", &[]);
+fn empty_input_returns_eof() {
+    assert_tokens("", &[(TokenKind::Eof, "EOF")]);
 }
 
 #[test]
@@ -38,10 +38,29 @@ fn skips_whitespace_between_tokens() {
 }
 
 #[test]
+fn skips_hash_and_slash_comments() {
+    assert_tokens(
+        "let x # comment\n// whole line\nreturn y // trailing comment",
+        &[
+            (TokenKind::Let, "let"),
+            (TokenKind::Ident, "x"),
+            (TokenKind::Return, "return"),
+            (TokenKind::Ident, "y"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
 fn lexes_all_keywords() {
     assert_tokens(
-        "if else return loop while any let fn this in import struct trait impl for continue break variant and or operator asm",
+        "true false bool char null if else return loop while any let fn this in import struct trait impl for continue break variant and or operator asm",
         &[
+            (TokenKind::True, "true"),
+            (TokenKind::False, "false"),
+            (TokenKind::Bool, "bool"),
+            (TokenKind::Char, "char"),
+            (TokenKind::Null, "null"),
             (TokenKind::If, "if"),
             (TokenKind::Else, "else"),
             (TokenKind::Return, "return"),
@@ -72,8 +91,13 @@ fn lexes_all_keywords() {
 #[test]
 fn keywords_are_case_sensitive() {
     assert_tokens(
-        "If ELSE Return ASM",
+        "True FALSE Bool Char Null If ELSE Return ASM",
         &[
+            (TokenKind::Ident, "True"),
+            (TokenKind::Ident, "FALSE"),
+            (TokenKind::Ident, "Bool"),
+            (TokenKind::Ident, "Char"),
+            (TokenKind::Ident, "Null"),
             (TokenKind::Ident, "If"),
             (TokenKind::Ident, "ELSE"),
             (TokenKind::Ident, "Return"),
@@ -86,8 +110,11 @@ fn keywords_are_case_sensitive() {
 #[test]
 fn keyword_prefixes_and_suffixes_are_identifiers() {
     assert_tokens(
-        "ifx xif let_value fn2 operator_overload",
+        "truex xtrue null_value ifx xif let_value fn2 operator_overload",
         &[
+            (TokenKind::Ident, "truex"),
+            (TokenKind::Ident, "xtrue"),
+            (TokenKind::Ident, "null_value"),
             (TokenKind::Ident, "ifx"),
             (TokenKind::Ident, "xif"),
             (TokenKind::Ident, "let_value"),
@@ -101,7 +128,7 @@ fn keyword_prefixes_and_suffixes_are_identifiers() {
 #[test]
 fn lexes_identifiers_with_letters_digits_and_underscores_after_first_char() {
     assert_tokens(
-        "foo bar_1 CamelCase snake_case ABC xyz",
+        "foo bar_1 CamelCase snake_case ABC xyz zed Zed",
         &[
             (TokenKind::Ident, "foo"),
             (TokenKind::Ident, "bar_1"),
@@ -109,6 +136,8 @@ fn lexes_identifiers_with_letters_digits_and_underscores_after_first_char() {
             (TokenKind::Ident, "snake_case"),
             (TokenKind::Ident, "ABC"),
             (TokenKind::Ident, "xyz"),
+            (TokenKind::Ident, "zed"),
+            (TokenKind::Ident, "Zed"),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -117,13 +146,14 @@ fn lexes_identifiers_with_letters_digits_and_underscores_after_first_char() {
 #[test]
 fn lexes_integer_literals() {
     assert_tokens(
-        "0 1 42 007 1234567890",
+        "0 1 9 42 007 9876543210",
         &[
             (TokenKind::Int, "0"),
             (TokenKind::Int, "1"),
+            (TokenKind::Int, "9"),
             (TokenKind::Int, "42"),
             (TokenKind::Int, "007"),
-            (TokenKind::Int, "1234567890"),
+            (TokenKind::Int, "9876543210"),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -145,7 +175,10 @@ fn lexes_float_literals() {
 
 #[test]
 fn keeps_multiple_dots_inside_number_literal() {
-    assert_tokens("1.2.3", &[(TokenKind::Float, "1.2.3"), (TokenKind::Eof, "EOF")]);
+    assert_tokens(
+        "1.2.3",
+        &[(TokenKind::Float, "1.2.3"), (TokenKind::Eof, "EOF")],
+    );
 }
 
 #[test]
@@ -175,10 +208,41 @@ fn lexes_string_literals() {
 }
 
 #[test]
+fn string_literal_handles_escape_sequences() {
+    assert_tokens(
+        r#""quote: \"" "slash: \\" "line\nnext" "tab\tend""#,
+        &[
+            (TokenKind::StringLiteral, "quote: \""),
+            (TokenKind::StringLiteral, "slash: \\"),
+            (TokenKind::StringLiteral, "line\nnext"),
+            (TokenKind::StringLiteral, "tab\tend"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn lexes_char_literals() {
+    assert_tokens(
+        r#"'a' '\n' '\'' '\\'"#,
+        &[
+            (TokenKind::Char, "a"),
+            (TokenKind::Char, "\n"),
+            (TokenKind::Char, "'"),
+            (TokenKind::Char, "\\"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
 fn string_literal_keeps_newlines_and_tabs_inside() {
     assert_tokens(
         "\"line 1\n\tline 2\"",
-        &[(TokenKind::StringLiteral, "line 1\n\tline 2"), (TokenKind::Eof, "EOF")],
+        &[
+            (TokenKind::StringLiteral, "line 1\n\tline 2"),
+            (TokenKind::Eof, "EOF"),
+        ],
     );
 }
 
@@ -230,6 +294,24 @@ fn lexes_compound_operators() {
             (TokenKind::GtEq, ">="),
             (TokenKind::LtLt, "<<"),
             (TokenKind::GtGt, ">>"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn compound_operators_use_longest_supported_prefix() {
+    assert_tokens(
+        "=== !== <<= >>=",
+        &[
+            (TokenKind::EqEq, "=="),
+            (TokenKind::Eq, "="),
+            (TokenKind::BangEq, "!="),
+            (TokenKind::Eq, "="),
+            (TokenKind::LtLt, "<<"),
+            (TokenKind::Eq, "="),
+            (TokenKind::GtGt, ">>"),
+            (TokenKind::Eq, "="),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -305,4 +387,10 @@ fn identifier_cannot_start_with_underscore() {
 #[should_panic(expected = "Could not convert")]
 fn non_ascii_identifier_start_panics() {
     lex("äpfel");
+}
+
+#[test]
+#[should_panic(expected = "Could not convert")]
+fn non_ascii_identifier_body_panics() {
+    lex("aä");
 }

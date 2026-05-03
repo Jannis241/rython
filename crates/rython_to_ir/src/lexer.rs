@@ -1,5 +1,3 @@
-use std::{fmt::Write, process::exit};
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     True,
@@ -68,7 +66,6 @@ pub enum TokenKind {
     Gt,
     GtEq,
 
-
     Plus,
     Minus,
     Star,
@@ -96,45 +93,37 @@ pub struct Lexer {
     chars: Vec<char>,
 }
 
-
 impl Lexer {
     pub fn create_tokens(input: String) -> Vec<Token> {
         let chars: Vec<char> = input.chars().collect();
 
-        if chars.is_empty() {
-            return vec![];
-        }
-
         let mut lexer = Lexer {
             current_idx: 0,
-            current_char: Some(chars[0]),
+            current_char: chars.first().copied(),
             chars,
         };
 
         let mut tokens = Vec::new();
 
-
-        while tokens.last().is_none_or(|last: &Token| last.kind != TokenKind::Eof) {
+        while tokens
+            .last()
+            .is_none_or(|last: &Token| last.kind != TokenKind::Eof)
+        {
             tokens.push(lexer.create_next_token());
         }
 
         return tokens;
     }
     fn create_next_token(&mut self) -> Token {
-        while self.current_char.is_some_and(|c| c.is_ascii_whitespace()) {
-            self.advance();
-        }
+        self.skip_ignored();
 
         let token = match self.current_char {
-            None =>
-                Token::new(TokenKind::Eof, "EOF".to_string()),
+            None => Token::new(TokenKind::Eof, "EOF".to_string()),
 
-            Some('0'..'9') => self.handle_numbers(),
+            Some('0'..='9') => self.handle_numbers(),
             Some('"') => self.handle_strings(),
-            Some('a'..'z' | 'A'..'Z') => self.handle_idents(),
-            _ => {
-                panic!("Lexing Error: Could not convert {:?} into Token.", self.current_char)
-            }
+            Some('\'') => self.handle_char(),
+            Some('a'..='z' | 'A'..='Z') => self.handle_idents(),
             Some('+') => self.handle_plus(),
             Some('-') => self.handle_minus(),
             Some('*') => self.handle_star(),
@@ -163,14 +152,40 @@ impl Lexer {
             Some(':') => Token::new(TokenKind::Colon, ":".to_string()),
             Some('.') => Token::new(TokenKind::Dot, ".".to_string()),
 
+            _ => {
+                panic!(
+                    "Lexing Error: Could not convert {:?} into Token.",
+                    self.current_char
+                )
+            }
         };
 
         self.advance();
 
         return token;
-
     }
-        fn handle_plus(&mut self) -> Token {
+    fn skip_ignored(&mut self) {
+        loop {
+            while self.current_char.is_some_and(|c| c.is_ascii_whitespace()) {
+                self.advance();
+            }
+
+            if self.current_char == Some('/') && self.peek() == Some('/') {
+                self.skip_until_newline();
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    fn skip_until_newline(&mut self) {
+        while self.current_char.is_some() && self.current_char != Some('\n') {
+            self.advance();
+        }
+    }
+
+    fn handle_plus(&mut self) -> Token {
         if self.peek() == Some('=') {
             self.advance();
             Token::new(TokenKind::PlusEq, "+=".to_string())
@@ -253,17 +268,24 @@ impl Lexer {
     }
     fn handle_idents(&mut self) -> Token {
         let mut ident = String::new();
-        ident.write_char(self.current_char.unwrap()); // der current_char kann nicht None sein da
+        ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
         // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
 
-        while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
-            ident.write_char(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
+        while self
+            .peek()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            ident.push(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
             // ob self.peek Some ist
             self.advance();
         }
 
-
         let token = match ident.as_str() {
+            "true" => Token::new(TokenKind::True, ident),
+            "false" => Token::new(TokenKind::False, ident),
+            "bool" => Token::new(TokenKind::Bool, ident),
+            "char" => Token::new(TokenKind::Char, ident),
+            "null" => Token::new(TokenKind::Null, ident),
             "if" => Token::new(TokenKind::If, ident),
             "else" => Token::new(TokenKind::Else, ident),
             "return" => Token::new(TokenKind::Return, ident),
@@ -295,36 +317,78 @@ impl Lexer {
         let mut str = String::new();
         self.advance(); // einmal advancen, damit man nicht mehr auf dem " ist.
 
-        // Todo: Fixxen dass wenn kein "" kommt der nicht unendlich läuft und es irgendwann ein
-        // error bei advance gibt
-        while self.current_char != Some('"') && self.current_char.is_some(){
-            str.write_char(self.current_char.unwrap()); // unwrap ist safe da oben gecheckt wurde ob
-            // current_char Some ist
+        while self.current_char != Some('"') && self.current_char.is_some() {
+            str.push(self.handle_escaped_char());
             self.advance();
         }
         Token::new(TokenKind::StringLiteral, str)
     }
+
+    fn handle_char(&mut self) -> Token {
+        let mut char_literal = String::new();
+        self.advance();
+
+        while self.current_char != Some('\'') && self.current_char.is_some() {
+            char_literal.push(self.handle_escaped_char());
+            self.advance();
+        }
+
+        Token::new(TokenKind::Char, char_literal)
+    }
+
+    fn handle_escaped_char(&mut self) -> char {
+        if self.current_char != Some('\\') {
+            return self.current_char.unwrap();
+        }
+
+        match self.peek() {
+            Some('n') => {
+                self.advance();
+                '\n'
+            }
+            Some('t') => {
+                self.advance();
+                '\t'
+            }
+            Some('r') => {
+                self.advance();
+                '\r'
+            }
+            Some('"') => {
+                self.advance();
+                '"'
+            }
+            Some('\'') => {
+                self.advance();
+                '\''
+            }
+            Some('\\') => {
+                self.advance();
+                '\\'
+            }
+            _ => '\\',
+        }
+    }
+
     fn handle_numbers(&mut self) -> Token {
         let mut number = String::new();
 
         let mut is_float = false;
 
-        number.write_char(self.current_char.unwrap()); // unwrap ist safe da die methode nur bei
+        number.push(self.current_char.unwrap()); // unwrap ist safe da die methode nur bei
         // Some() aufgerufen wird
 
         while self.peek().is_some_and(|c| c.is_ascii_digit() || c == '.') {
             if self.peek().unwrap() == '.' {
                 is_float = true;
             }
-            number.write_char(self.peek().unwrap()); // safe weil wurde gecheckt ob some ist
+            number.push(self.peek().unwrap()); // safe weil wurde gecheckt ob some ist
             self.advance();
-
         }
         if is_float {
             return Token::new(TokenKind::Float, number);
         }
         return Token::new(TokenKind::Int, number);
-
     }
 
     fn advance(&mut self) {
@@ -336,4 +400,3 @@ impl Lexer {
         return self.chars.get(self.current_idx + 1).copied();
     }
 }
-
