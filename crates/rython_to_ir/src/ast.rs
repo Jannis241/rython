@@ -217,7 +217,7 @@ pub enum Expr {
 
     IntLiteral(String),
     FloatLiteral(String),
-    BoolLiteral(String),
+    BoolLiteral(b),
     StringLiteral(String),
     ListLiteral(Vec<Box<Expr>>),
     StructLiteral {
