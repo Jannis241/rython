@@ -62,8 +62,6 @@ impl Parser {
         Ok(())
     }
 
-    // ====================== EXPRESSIONS ======================
-
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_assignment()
     }
@@ -415,8 +413,6 @@ impl Parser {
         })
     }
 
-    // ====================== TYPE / GENERICS HELPERS ======================
-
     fn parse_type(&mut self) -> Result<Type, ParseError> {
         if self.current()?.kind == TokenKind::Any {
             self.advance()?;
@@ -582,8 +578,6 @@ impl Parser {
             Ok(Some(operator))
         }
     }
-
-    // ====================== TOP-LEVEL ITEMS ======================
 
     fn parse_import(&mut self) -> Result<(), ParseError> {
         self.expect_current(TokenKind::Import)?;
@@ -853,8 +847,6 @@ impl Parser {
             }));
         Ok(())
     }
-
-    // ====================== STATEMENTS ======================
 
     fn parse_block(&mut self) -> Result<Block, ParseError> {
         let mut block = Block { statements: vec![] };
