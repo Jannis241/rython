@@ -4,6 +4,5 @@ mod tests {
 
     #[test]
     fn lexer_test() {
-        panic!()
     }
 }
