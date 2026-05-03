@@ -17,7 +17,7 @@ float
 bool
 char
 
-!asm {
+asm {
     //z.B. print:
 
 section .data
@@ -37,7 +37,7 @@ _start:
     mov rax, 60       ; syscall: exit
     xor rdi, rdi      ; exit code 0
     syscall
-}
+};
 
 
 ident += expr
@@ -79,9 +79,8 @@ fn ident(ident: type) type {
 
     }
 
-    (string a, string b) = ("jaja", "diese bockt");
 
-    for (idx, ident) in enumerate(expr) {
+    for idx in enumerate(expr) {
 
     }
     for ident in expr { // -> loop { ident = expr.next() } c.a.
@@ -105,7 +104,7 @@ fn irgendeinefucntion(car: any auto) {
 
 }
 
-struct List<T> {
+struct List {
     start: int,
     length: int,
 }
@@ -117,10 +116,9 @@ struct String {
 
 
 
-struct person<T> {
-    string name,
-    type ident,
-    any auto ident,
+struct person {
+    name: string,
+    ident: any auto,
 
     fn new() type {
 
@@ -162,17 +160,73 @@ variant Option {
 }
 
 
-struct List<T: any auto> {
+struct List {
     ident: ident
 
-    fn new() T {
+    fn new() int {
 
     }
 }
 
-impl add for List<T: any auto> {
-    fn add(this, rhs: T) {
+impl add for List {
+    fn add(this, rhs: int) {
 
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-----------generic types--------------
+
+struct List<T> {
+    first: T
+    second: T
+
+    fn get_first(this) T {
+
+    }
+}
+
+
+trait GetLast<T> {
+    fn get_last(this) T;
+}
+
+impl<T> GetLast<T> for List<T> {
+    fn get_last(this) T {
+
+    }
+}
+
+trait Add<T> {
+    fn add(this, rhs: T) T;
+}
+
+impl Add<List> for List {
+    fn add(this, rhs: List) List {
+        //todo
+    }
+}
+
+
+trait Add<T: any auto, R: any auto + Add> {
+    fn add(this, rhs: T, other: R) R;
+}
+
+impl Add<MyCar, MyAddableCar> for ...
+
+
+
 
