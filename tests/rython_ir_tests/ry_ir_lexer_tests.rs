@@ -38,7 +38,7 @@ fn skips_whitespace_between_tokens() {
 }
 
 #[test]
-fn skips_hash_and_slash_comments() {
+fn skips_slash_comments() {
     assert_tokens(
         "let x // comment\n// whole line\nreturn y // trailing comment",
         &[
@@ -49,6 +49,12 @@ fn skips_hash_and_slash_comments() {
             (TokenKind::Eof, "EOF"),
         ],
     );
+}
+
+#[test]
+#[should_panic(expected = "Could not convert")]
+fn hash_comments_are_not_supported() {
+    lex("# comment");
 }
 
 #[test]
@@ -180,6 +186,38 @@ fn keeps_multiple_dots_inside_number_literal() {
 }
 
 #[test]
+fn keeps_dot_sequences_inside_number_literal() {
+    assert_tokens(
+        "0..1 1.foo 1..",
+        &[
+            (TokenKind::Float, "0..1"),
+            (TokenKind::Float, "1."),
+            (TokenKind::Ident, "foo"),
+            (TokenKind::Float, "1.."),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn dot_prefixed_decimal_starts_with_dot_token() {
+    assert_tokens(
+        ".5",
+        &[
+            (TokenKind::Dot, "."),
+            (TokenKind::Int, "5"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+#[should_panic(expected = "Could not convert")]
+fn number_literals_do_not_allow_underscores() {
+    lex("123_456");
+}
+
+#[test]
 fn stops_number_before_identifier_text() {
     assert_tokens(
         "123abc",
@@ -220,6 +258,39 @@ fn string_literal_handles_escape_sequences() {
 }
 
 #[test]
+fn string_literal_handles_carriage_return_escape() {
+    assert_tokens(
+        r#""line\rnext""#,
+        &[
+            (TokenKind::StringLiteral, "line\rnext"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn string_literal_keeps_unknown_escape_backslash() {
+    assert_tokens(
+        r#""unknown \x escape""#,
+        &[
+            (TokenKind::StringLiteral, "unknown \\x escape"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn string_literal_keeps_final_backslash_in_unterminated_string() {
+    assert_tokens(
+        r#""abc\"#,
+        &[
+            (TokenKind::StringLiteral, "abc\\"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
 fn lexes_char_literals() {
     assert_tokens(
         r#"'a' '\n' '\'' '\\'"#,
@@ -228,6 +299,27 @@ fn lexes_char_literals() {
             (TokenKind::Char, "\n"),
             (TokenKind::Char, "'"),
             (TokenKind::Char, "\\"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn char_literal_handles_carriage_return_escape() {
+    assert_tokens(
+        r#"'\r'"#,
+        &[(TokenKind::Char, "\r"), (TokenKind::Eof, "EOF")],
+    );
+}
+
+#[test]
+fn char_literal_accepts_empty_multiple_chars_and_unterminated_values() {
+    assert_tokens(
+        "'' 'ab' 'unterminated",
+        &[
+            (TokenKind::Char, ""),
+            (TokenKind::Char, "ab"),
+            (TokenKind::Char, "unterminated"),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -316,6 +408,66 @@ fn compound_operators_use_longest_supported_prefix() {
 }
 
 #[test]
+fn lexes_adjacent_slash_operators_and_comments() {
+    assert_tokens(
+        "/ /= //// comment\n/",
+        &[
+            (TokenKind::Slash, "/"),
+            (TokenKind::SlashEq, "/="),
+            (TokenKind::Slash, "/"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn repeated_ampersands_and_pipes_are_separate_tokens() {
+    assert_tokens(
+        "&& ||",
+        &[
+            (TokenKind::Amp, "&"),
+            (TokenKind::Amp, "&"),
+            (TokenKind::Pipe, "|"),
+            (TokenKind::Pipe, "|"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn percent_equal_is_percent_then_equal() {
+    assert_tokens(
+        "%=",
+        &[
+            (TokenKind::Percent, "%"),
+            (TokenKind::Eq, "="),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+#[should_panic(expected = "Unexpected token '!'")]
+fn bang_before_other_character_panics() {
+    lex("!<");
+}
+
+#[test]
+fn block_comment_syntax_is_lexed_as_regular_tokens() {
+    assert_tokens(
+        "/* comment */",
+        &[
+            (TokenKind::Slash, "/"),
+            (TokenKind::Star, "*"),
+            (TokenKind::Ident, "comment"),
+            (TokenKind::Star, "*"),
+            (TokenKind::Slash, "/"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
 fn lexes_delimiters_and_punctuation() {
     assert_tokens(
         "( ) { } [ ] , ; : .",
@@ -391,4 +543,10 @@ fn non_ascii_identifier_start_panics() {
 #[should_panic(expected = "Could not convert")]
 fn non_ascii_identifier_body_panics() {
     lex("aä");
+}
+
+#[test]
+#[should_panic(expected = "Could not convert")]
+fn unicode_whitespace_panics() {
+    lex("let\u{00a0}x");
 }
