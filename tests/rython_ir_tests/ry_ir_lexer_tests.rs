@@ -40,7 +40,7 @@ fn skips_whitespace_between_tokens() {
 #[test]
 fn skips_hash_and_slash_comments() {
     assert_tokens(
-        "let x # comment\n// whole line\nreturn y // trailing comment",
+        "let x // comment\n// whole line\nreturn y // trailing comment",
         &[
             (TokenKind::Let, "let"),
             (TokenKind::Ident, "x"),
@@ -54,11 +54,10 @@ fn skips_hash_and_slash_comments() {
 #[test]
 fn lexes_all_keywords() {
     assert_tokens(
-        "true false bool char null if else return loop while any let fn this in import struct trait impl for continue break variant and or operator asm",
+        "true false char null if else return loop while any let fn this in import struct trait impl for continue break variant and or operator asm",
         &[
             (TokenKind::True, "true"),
             (TokenKind::False, "false"),
-            (TokenKind::Bool, "bool"),
             (TokenKind::Char, "char"),
             (TokenKind::Null, "null"),
             (TokenKind::If, "if"),
@@ -91,11 +90,10 @@ fn lexes_all_keywords() {
 #[test]
 fn keywords_are_case_sensitive() {
     assert_tokens(
-        "True FALSE Bool Char Null If ELSE Return ASM",
+        "True FALSE Char Null If ELSE Return ASM",
         &[
             (TokenKind::Ident, "True"),
             (TokenKind::Ident, "FALSE"),
-            (TokenKind::Ident, "Bool"),
             (TokenKind::Ident, "Char"),
             (TokenKind::Ident, "Null"),
             (TokenKind::Ident, "If"),

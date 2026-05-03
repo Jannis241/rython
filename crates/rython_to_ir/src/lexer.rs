@@ -5,7 +5,6 @@ pub enum TokenKind {
     Ident,
     Int,
     Float,
-    Bool,
     StringLiteral,
     Char,
     Null,
@@ -283,7 +282,6 @@ impl Lexer {
         let token = match ident.as_str() {
             "true" => Token::new(TokenKind::True, ident),
             "false" => Token::new(TokenKind::False, ident),
-            "bool" => Token::new(TokenKind::Bool, ident),
             "char" => Token::new(TokenKind::Char, ident),
             "null" => Token::new(TokenKind::Null, ident),
             "if" => Token::new(TokenKind::If, ident),
