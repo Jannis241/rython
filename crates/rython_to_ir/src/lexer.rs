@@ -1,2 +1,67 @@
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {}
+pub enum Token {
+    True,
+    False,
+    Ident(String),
+    Int(i32),
+    Float(f64),
+    Bool(bool),
+    String(String),
+    Char(char),
+    Null,
+
+    If,
+    Else,
+    Return,
+    Loop,
+    While,
+    Any,
+    Let,
+    Fn,
+    In,
+    Import,
+    Struct,
+    Trait,
+    Impl,
+    For,
+    Continue,
+    Break,
+    Variant,
+
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    Comma,
+    Semicolon,
+    Colon,
+    Dot,
+    Arrow,
+
+    Eq,
+    PlusEq,
+    MinusEq,
+    StarEq,
+    SlashEq,
+
+    EqEq,
+    BangEq,
+    Lt,
+    LtEq,
+    Gt,
+    GtEq,
+
+
+    Plus,
+    Minus,
+    Star,
+    StarStar,
+    Slash,
+    Percent,
+
+
+    Eof,
+}
+
