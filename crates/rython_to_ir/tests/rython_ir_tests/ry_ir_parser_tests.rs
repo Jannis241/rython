@@ -507,9 +507,10 @@ fn lexer_invalid_char_panics() {
 
 #[test]
 fn lexer_complex_program_tokenization() {
-    let tokens =
-        Lexer::create_tokens("import a.b; fn add(x: int, y: int) int { return x + y; }".to_string())
-            .expect("lexing failed");
+    let tokens = Lexer::create_tokens(
+        "import a.b; fn add(x: int, y: int) int { return x + y; }".to_string(),
+    )
+    .expect("lexing failed");
     assert_eq!(
         tokens,
         vec![
@@ -1203,7 +1204,7 @@ stmt_case!(
     ],
     Stmt::Let(Let {
         var_name: "x".into(),
-        var_type: Some(Type::Named("int".into())),
+        var_type: Type::Named("int".into()),
         value: Expr::IntLiteral("1".into())
     })
 );
@@ -1223,7 +1224,7 @@ stmt_case!(
     ],
     Stmt::Let(Let {
         var_name: "x".into(),
-        var_type: Some(Type::AnyTrait(vec![
+        var_type: Type::AnyTrait(vec![
             TraitBound {
                 trait_name: "Display".into(),
                 args: vec![]
@@ -1232,7 +1233,7 @@ stmt_case!(
                 trait_name: "Debug".into(),
                 args: vec![]
             }
-        ])),
+        ]),
         value: Expr::Variable("y".into())
     })
 );
@@ -1254,7 +1255,7 @@ stmt_case!(
     ],
     Stmt::Let(Let {
         var_name: "p".into(),
-        var_type: Some(Type::Named("Point".into())),
+        var_type: Type::Named("Point".into()),
         value: Expr::StructLiteral {
             struct_name: "Point".into(),
             arguments: vec![("x".into(), Expr::IntLiteral("1".into()))]

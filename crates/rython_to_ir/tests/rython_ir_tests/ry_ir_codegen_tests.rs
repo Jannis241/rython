@@ -183,7 +183,12 @@ fn generate_empty_item_list_returns_empty_module() {
 
 #[test]
 fn function_without_return_type_or_statements_generates_void_entry_function() {
-    let module = unwrap_codegen(generate_code(&[function("main", Vec::new(), None, Vec::new())]));
+    let module = unwrap_codegen(generate_code(&[function(
+        "main",
+        Vec::new(),
+        None,
+        Vec::new(),
+    )]));
 
     assert_eq!(module.functions.len(), 1);
     assert!(module.globals.is_empty());
@@ -516,26 +521,26 @@ fn global_and_const_items_are_reported_as_unsupported_items() {
 #[test]
 fn global_and_const_values_are_rejected_before_literal_validation() {
     assert_codegen_err(generate_code(&[global_var(
-            "not_literal",
-            named_type("int"),
-            Expr::Variable("x".to_string()),
-        )]));
+        "not_literal",
+        named_type("int"),
+        Expr::Variable("x".to_string()),
+    )]));
     assert_codegen_err(generate_code(&[const_var(
-            "also_not_literal",
-            named_type("int"),
-            Expr::BinaryOp {
-                lhs: Box::new(Expr::IntLiteral("1".to_string())),
-                binary_op: BinaryOp::Add,
-                rhs: Box::new(Expr::IntLiteral("2".to_string())),
-            },
-        )]));
+        "also_not_literal",
+        named_type("int"),
+        Expr::BinaryOp {
+            lhs: Box::new(Expr::IntLiteral("1".to_string())),
+            binary_op: BinaryOp::Add,
+            rhs: Box::new(Expr::IntLiteral("2".to_string())),
+        },
+    )]));
 }
 
 #[test]
 fn unsupported_top_level_item_returns_error() {
     assert_codegen_err(generate_code(&[Item::Import(Import {
-            import_name: "std".to_string(),
-        })]));
+        import_name: "std".to_string(),
+    })]));
 }
 
 #[test]
@@ -616,11 +621,11 @@ fn function_generic_params_and_operator_metadata_do_not_change_generated_functio
 #[test]
 fn unsupported_statement_returns_error() {
     assert_codegen_err(generate_code(&[function(
-            "main",
-            Vec::new(),
-            None,
-            vec![Stmt::Expr(Expr::IntLiteral("1".to_string()))],
-        )]));
+        "main",
+        Vec::new(),
+        None,
+        vec![Stmt::Expr(Expr::IntLiteral("1".to_string()))],
+    )]));
 }
 
 #[test]
@@ -631,7 +636,7 @@ fn let_statement_allocates_initializes_and_stores_variable() {
         None,
         vec![Stmt::Let(Let {
             var_name: "x".to_string(),
-            var_type: Some(named_type("int")),
+            var_type: named_type("int"),
             value: Expr::IntLiteral("5".to_string()),
         })],
     )]));
@@ -645,7 +650,12 @@ fn let_statement_allocates_initializes_and_stores_variable() {
         &IrType::I64,
         &ConstValue::Int(5),
     );
-    assert_store_instruction(&entry.instructions[2], &IrType::I64, "TempId(1)", "TempId(0)");
+    assert_store_instruction(
+        &entry.instructions[2],
+        &IrType::I64,
+        "TempId(1)",
+        "TempId(0)",
+    );
     assert_ret(&entry.terminator, None);
 }
 
@@ -657,7 +667,7 @@ fn let_statement_rejects_initializer_with_wrong_type() {
         None,
         vec![Stmt::Let(Let {
             var_name: "x".to_string(),
-            var_type: Some(named_type("int")),
+            var_type: named_type("int"),
             value: Expr::BoolLiteral(true),
         })],
     )]));
@@ -672,7 +682,7 @@ fn declared_variable_expression_loads_from_variable_address() {
         vec![
             Stmt::Let(Let {
                 var_name: "x".to_string(),
-                var_type: Some(named_type("int")),
+                var_type: named_type("int"),
                 value: Expr::IntLiteral("5".to_string()),
             }),
             return_stmt(Some(Expr::Variable("x".to_string()))),
@@ -688,20 +698,29 @@ fn declared_variable_expression_loads_from_variable_address() {
         &IrType::I64,
         &ConstValue::Int(5),
     );
-    assert_store_instruction(&entry.instructions[2], &IrType::I64, "TempId(1)", "TempId(0)");
-    assert_load_instruction(&entry.instructions[3], "TempId(2)", &IrType::I64, "TempId(0)");
+    assert_store_instruction(
+        &entry.instructions[2],
+        &IrType::I64,
+        "TempId(1)",
+        "TempId(0)",
+    );
+    assert_load_instruction(
+        &entry.instructions[3],
+        "TempId(2)",
+        &IrType::I64,
+        "TempId(0)",
+    );
     assert_ret(&entry.terminator, Some("TempId(2)"));
 }
-
 
 #[test]
 fn unknown_variable_expression_returns_error() {
     assert_codegen_err(generate_code(&[function(
-            "main",
-            Vec::new(),
-            Some(named_type("int")),
-            vec![return_stmt(Some(Expr::Variable("x".to_string())))],
-        )]));
+        "main",
+        Vec::new(),
+        Some(named_type("int")),
+        vec![return_stmt(Some(Expr::Variable("x".to_string())))],
+    )]));
 }
 
 #[test]
@@ -743,11 +762,11 @@ fn all_non_literal_return_expressions_return_errors() {
 
     for expr in expressions {
         assert_codegen_err(generate_code(&[function(
-                "main",
-                Vec::new(),
-                Some(named_type("int")),
-                vec![return_stmt(Some(expr))],
-            )]));
+            "main",
+            Vec::new(),
+            Some(named_type("int")),
+            vec![return_stmt(Some(expr))],
+        )]));
     }
 }
 
@@ -787,23 +806,23 @@ fn any_trait_return_type_panics() {
 #[test]
 fn invalid_int_literal_returns_error() {
     assert_codegen_err(generate_code(&[function(
-            "main",
-            Vec::new(),
-            Some(named_type("int")),
-            vec![return_stmt(Some(Expr::IntLiteral(
-                "9223372036854775808".to_string(),
-            )))],
-        )]));
+        "main",
+        Vec::new(),
+        Some(named_type("int")),
+        vec![return_stmt(Some(Expr::IntLiteral(
+            "9223372036854775808".to_string(),
+        )))],
+    )]));
 }
 
 #[test]
 fn invalid_float_literal_returns_error() {
     assert_codegen_err(generate_code(&[function(
-            "main",
-            Vec::new(),
-            Some(named_type("float")),
-            vec![return_stmt(Some(Expr::FloatLiteral(
-                "not_a_float".to_string(),
-            )))],
-        )]));
+        "main",
+        Vec::new(),
+        Some(named_type("float")),
+        vec![return_stmt(Some(Expr::FloatLiteral(
+            "not_a_float".to_string(),
+        )))],
+    )]));
 }
