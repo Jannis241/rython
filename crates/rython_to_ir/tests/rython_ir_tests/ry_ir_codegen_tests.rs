@@ -78,6 +78,52 @@ fn assert_const_instruction(
     }
 }
 
+fn assert_alloca_instruction(
+    instruction: &IrInstruction,
+    expected_temp: &str,
+    expected_type: &IrType,
+) {
+    match instruction {
+        IrInstruction::Alloca { temp_id, ty } => {
+            assert_eq!(temp_debug(temp_id), expected_temp);
+            assert_ir_type(ty, expected_type);
+        }
+        other => panic!("expected alloca instruction, got {other:?}"),
+    }
+}
+
+fn assert_store_instruction(
+    instruction: &IrInstruction,
+    expected_type: &IrType,
+    expected_value: &str,
+    expected_addr: &str,
+) {
+    match instruction {
+        IrInstruction::Store { ty, value, addr } => {
+            assert_ir_type(ty, expected_type);
+            assert_eq!(temp_debug(value), expected_value);
+            assert_eq!(temp_debug(addr), expected_addr);
+        }
+        other => panic!("expected store instruction, got {other:?}"),
+    }
+}
+
+fn assert_load_instruction(
+    instruction: &IrInstruction,
+    expected_temp: &str,
+    expected_type: &IrType,
+    expected_addr: &str,
+) {
+    match instruction {
+        IrInstruction::Load { temp_id, ty, addr } => {
+            assert_eq!(temp_debug(temp_id), expected_temp);
+            assert_ir_type(ty, expected_type);
+            assert_eq!(temp_debug(addr), expected_addr);
+        }
+        other => panic!("expected load instruction, got {other:?}"),
+    }
+}
+
 fn assert_const_value(actual: &ConstValue, expected: &ConstValue) {
     match (actual, expected) {
         (ConstValue::Int(actual), ConstValue::Int(expected)) => assert_eq!(actual, expected),
@@ -577,9 +623,79 @@ fn unsupported_statement_returns_error() {
         )]));
 }
 
+#[test]
+fn let_statement_allocates_initializes_and_stores_variable() {
+    let module = unwrap_codegen(generate_code(&[function(
+        "main",
+        Vec::new(),
+        None,
+        vec![Stmt::Let(Let {
+            var_name: "x".to_string(),
+            var_type: Some(named_type("int")),
+            value: Expr::IntLiteral("5".to_string()),
+        })],
+    )]));
+
+    let entry = &module.functions[0].blocks[0];
+    assert_eq!(entry.instructions.len(), 3);
+    assert_alloca_instruction(&entry.instructions[0], "TempId(0)", &IrType::I64);
+    assert_const_instruction(
+        &entry.instructions[1],
+        "TempId(1)",
+        &IrType::I64,
+        &ConstValue::Int(5),
+    );
+    assert_store_instruction(&entry.instructions[2], &IrType::I64, "TempId(1)", "TempId(0)");
+    assert_ret(&entry.terminator, None);
+}
 
 #[test]
-fn unsupported_expression_returns_error() {
+fn let_statement_rejects_initializer_with_wrong_type() {
+    assert_codegen_err(generate_code(&[function(
+        "main",
+        Vec::new(),
+        None,
+        vec![Stmt::Let(Let {
+            var_name: "x".to_string(),
+            var_type: Some(named_type("int")),
+            value: Expr::BoolLiteral(true),
+        })],
+    )]));
+}
+
+#[test]
+fn declared_variable_expression_loads_from_variable_address() {
+    let module = unwrap_codegen(generate_code(&[function(
+        "main",
+        Vec::new(),
+        Some(named_type("int")),
+        vec![
+            Stmt::Let(Let {
+                var_name: "x".to_string(),
+                var_type: Some(named_type("int")),
+                value: Expr::IntLiteral("5".to_string()),
+            }),
+            return_stmt(Some(Expr::Variable("x".to_string()))),
+        ],
+    )]));
+
+    let entry = &module.functions[0].blocks[0];
+    assert_eq!(entry.instructions.len(), 4);
+    assert_alloca_instruction(&entry.instructions[0], "TempId(0)", &IrType::I64);
+    assert_const_instruction(
+        &entry.instructions[1],
+        "TempId(1)",
+        &IrType::I64,
+        &ConstValue::Int(5),
+    );
+    assert_store_instruction(&entry.instructions[2], &IrType::I64, "TempId(1)", "TempId(0)");
+    assert_load_instruction(&entry.instructions[3], "TempId(2)", &IrType::I64, "TempId(0)");
+    assert_ret(&entry.terminator, Some("TempId(2)"));
+}
+
+
+#[test]
+fn unknown_variable_expression_returns_error() {
     assert_codegen_err(generate_code(&[function(
             "main",
             Vec::new(),
@@ -617,7 +733,6 @@ fn all_non_literal_return_expressions_return_errors() {
             op: UnaryOp::Not,
             value: Box::new(Expr::BoolLiteral(true)),
         },
-        Expr::Variable("x".to_string()),
         Expr::ListLiteral(vec![Box::new(Expr::IntLiteral("1".to_string()))]),
         Expr::StructLiteral {
             struct_name: "Point".to_string(),

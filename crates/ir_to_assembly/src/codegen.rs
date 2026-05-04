@@ -8,6 +8,7 @@ use std::{
 enum AsmCodeGenErr {
     TypeNotFound(String),
     MultipleTypesFound(String),
+    UnsupportedConstValue(ConstValue),
 }
 
 macro_rules! emit {
@@ -110,6 +111,9 @@ impl AsmCodeGen {
             ConstValue::Char(c) => Ok(format!("'{}'", c)),
             ConstValue::Float(f) => Ok(f.to_string()),
             ConstValue::String(s) => Ok(s),
+            ConstValue::Struct { .. } | ConstValue::Variant { .. } => {
+                Err(AsmCodeGenErr::UnsupportedConstValue(value))
+            }
         }
     }
 
