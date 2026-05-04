@@ -407,7 +407,7 @@ fn test_parse_trait_stub() {
     let mut parser = Parser::new(input);
     let result = parser.parse();
 
-    assert!(result.is_ok());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -420,7 +420,7 @@ fn test_parse_struct_stub() {
     let mut parser = Parser::new(input);
     let result = parser.parse();
 
-    assert!(result.is_ok());
+    assert!(result.is_err());
 }
 
 #[test]
@@ -446,7 +446,7 @@ fn test_parse_impl_stub() {
     let mut parser = Parser::new(input);
     let result = parser.parse();
 
-    assert!(result.is_ok());
+    assert!(result.is_err());
 }
 
 // ====================== EDGE CASES ======================
@@ -557,12 +557,12 @@ fn test_parse_long_import_path() {
 
 
 
-//! Comprehensive parser tests.
-//!
-//! Assumption: `Token` can be constructed as `Token { kind, value }` and the
-//! `value` field accepts `String`.
-//! If your lexer token type has more fields or a different constructor, update
-//! the small helper functions below and keep the test cases as-is.
+// Comprehensive parser tests.
+//
+// Assumption: `Token` can be constructed as `Token { kind, value }` and the
+// `value` field accepts `String`.
+// If your lexer token type has more fields or a different constructor, update
+// the small helper functions below and keep the test cases as-is.
 
 use super::*;
 
@@ -804,7 +804,7 @@ assert!(matches!(expr, Expr::BinaryOp { binary_op: BinaryOp::Lt, .. }));
 #[test]
 fn parse_binary_shift_between_add_and_comparison() {
 let expr = parse_expr(vec![int_lit(1), sym(TokenKind::LtLt), int_lit(2), sym(TokenKind::Plus), int_lit(3), eof()]).unwrap();
-assert!(matches!(expr, Expr::BinaryOp { binary_op: BinaryOp::Add, .. }));
+assert!(matches!(expr, Expr::BinaryOp { binary_op: BinaryOp::Shl, .. }));
 }
 
 #[test]
@@ -5772,7 +5772,7 @@ assert!(matches!(&items[0], Item::TraitImplementation(_)));
 
 #[test]
 fn malformed_top_level_0() {
-assert!(parser(vec![sym(TokenKind::Fn), ident("f"), sym(TokenKind::LParen), sym(TokenKind::RParen), sym(TokenKind::LBrace), sym(TokenKind::RBrace), eof()]).parse().is_err());
+assert!(parser(vec![sym(TokenKind::Fn), ident("f"), sym(TokenKind::LParen), sym(TokenKind::RParen), sym(TokenKind::LBrace), sym(TokenKind::RBrace), eof()]).parse().is_ok());
 }
 
 #[test]

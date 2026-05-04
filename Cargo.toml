@@ -6,6 +6,4 @@ members = [
     "crates/ir_to_assembly",
     "crates/manager",
 ]
-default-members = ["crates/rython_cli"]
 resolver = "2"
-

@@ -33,7 +33,7 @@ impl Parser {
         }
     }
 
-    fn advance(&mut self) -> Result<(), ParseError> {
+    pub fn advance(&mut self) -> Result<(), ParseError> {
         self.current_idx += 1;
         if self.current_idx >= self.tokens.len() {
             return Err(ParseError::UnexpectedEof);
@@ -41,21 +41,21 @@ impl Parser {
         Ok(())
     }
 
-    fn current(&self) -> Result<Token, ParseError> {
+    pub fn current(&self) -> Result<Token, ParseError> {
         self.tokens
             .get(self.current_idx)
             .cloned()
             .ok_or(ParseError::UnexpectedEof)
     }
 
-    fn peek(&self) -> Result<Token, ParseError> {
+    pub fn peek(&self) -> Result<Token, ParseError> {
         self.tokens
             .get(self.current_idx + 1)
             .cloned()
             .ok_or(ParseError::UnexpectedEof)
     }
 
-    fn expect_current(&self, expected: TokenKind) -> Result<(), ParseError> {
+    pub fn expect_current(&self, expected: TokenKind) -> Result<(), ParseError> {
         let found = self.current()?.kind;
         if found != expected {
             return Err(ParseError::UnexpectedToken {
@@ -67,7 +67,7 @@ impl Parser {
         Ok(())
     }
 
-    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_assignment()
     }
 
@@ -866,7 +866,7 @@ impl Parser {
         Ok(block)
     }
 
-    fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+    pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         match self.current()?.kind {
             TokenKind::Let => self.parse_let(),
             TokenKind::If => self.parse_if(),
@@ -1034,7 +1034,7 @@ impl Parser {
         Ok(stmt)
     }
 
-    pub fn parse(&mut self) -> Result<&Vec<Item>, ParseError> {
+    pub fn parse(&mut self) -> Result<Vec<Item>, ParseError> {
         loop {
             if self.current_idx >= self.tokens.len() {
                 break;
@@ -1053,6 +1053,6 @@ impl Parser {
             }
         }
 
-        Ok(&self.ast)
+        Ok(self.ast.clone())
     }
 }
