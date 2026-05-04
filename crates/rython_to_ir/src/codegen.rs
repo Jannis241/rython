@@ -97,10 +97,12 @@ impl IrGenerator {
             // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
             // werden kann ohne immer etwas returnen zu müssen
         }
-        IrFunction {
-            name: function.name.clone(),
-            parameter: function.params.iter().map(f)
-        }
+        // IrFunction {
+        //     name: function.name.clone(),
+        //     parameter: function.params.iter().map(||),
+        //     return_type: ,
+        //     blocks,
+        // };
         panic!()
     }
     fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) {
