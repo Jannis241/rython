@@ -29,6 +29,7 @@ pub struct IrField {
     pub ty: IrType,
 }
 
+
 #[derive(Debug, Clone)]
 pub enum IrTypeDef {
     Struct { name: String, fields: Vec<IrField> },
@@ -70,42 +71,77 @@ pub struct IrBlock {
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     Const {
-      temp_id: TempId,
-      ty: IrType,
-      value: ConstValue,
+      temp_id: TempId, // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
+      ty: IrType, // Typ des konstanten Werts
+      value: ConstValue, // der konkrete konstante Wert
     },
 
     Alloca {
-      temp_id: TempId, // temp_id ist der Name für die neue adresse
-      ty: IrType, // ty ist der Typ des WErts der an dieser Adresse gespeichert werden darf
+      temp_id: TempId, // Ergebnis-Temp, der die neu reservierte Adresse bezeichnet
+      ty: IrType, // Typ des Werts, der an dieser Adresse gespeichert werden darf
     },
 
     Load {
-      temp_id: TempId,
-      ty: IrType,
-      addr: TempId,
+      temp_id: TempId, // Ergebnis-Temp, in dem der gelesene Wert landet
+      ty: IrType, // Typ des gelesenen Werts
+      addr: TempId, // Adresse, aus der gelesen wird
     },
 
     Store {
-      ty: IrType, // typ der wertes der gespeichert wird
-      value: TempId, // die Temp ID des wertes der gespeichert wird
-      addr: TempId, // temp id der adresse in die geschrieben wird
+      ty: IrType, // Typ des Werts, der geschrieben wird
+      value: TempId, // Wert-Temp, der geschrieben wird
+      addr: TempId, // Adresse, in die geschrieben wird
     },
 
     Binary {
-      temp_id: TempId,
-      ty: IrType,
-      op: IrBinaryOp,
-      lhs: TempId,
-      rhs: TempId,
+      temp_id: TempId, // Ergebnis-Temp der Binary-Operation
+      ty: IrType, // Typ des Ergebnisses
+      op: IrBinaryOp, // Operation, z.B. Add oder Eq
+      lhs: TempId, // linker Operand als Wert-Temp
+      rhs: TempId, // rechter Operand als Wert-Temp
     },
 
-    Unary {
-      temp_id: TempId,
-      ty: IrType,
-      op: IrUnaryOp,
-      value: TempId,
+    // functions
+    Call {
+        temp_id: Option<TempId>, // Ergebnis-Temp fuer den Rueckgabewert; None bei void
+        function_name: String, // Name der aufgerufenen Funktion
+        args: Vec<TempId>, // Wert-Temps der bereits berechneten Argumente
+        return_type: IrType, // Rueckgabetyp der Funktion
     },
+
+    InitVariant {
+      temp_id: TempId, // Ergebnis-Temp des erzeugten Variant-Werts
+      ty: IrType, // Typ der Variant, z.B. Named("Option")
+      case_name: String, // ausgewaehlter Fall, z.B. Some oder None
+  },
+
+    Unary {
+      temp_id: TempId, // Ergebnis-Temp der Unary-Operation
+      ty: IrType, // Typ des Ergebnisses
+      op: IrUnaryOp, // Operation, z.B. Neg oder Not
+      value: TempId, // Operand als Wert-Temp
+    },
+    InitArray {
+        temp_id: TempId, // Ergebnis-Temp des erzeugten Array-Werts
+        element_type: IrType, // Typ der Array-Elemente
+        elements: Vec<TempId>, // Wert-Temps der Elemente
+    },
+    GetElementAddr{
+        temp_id: TempId, // Ergebnis-Temp, der die Adresse des Elements bezeichnet
+        base_addr: TempId, // Adresse des Arrays
+        index: TempId, // Wert-Temp des Index
+    },
+    InitStruct {
+        temp_id: TempId, // Ergebnis-Temp des erzeugten Struct-Werts
+        ty: IrType, // Typ des Structs, z.B. Named("Point")
+        fields: Vec<(String, TempId)>, // Feldname und Wert-Temp des jeweiligen Feldwerts
+    },
+    GetFieldAddr {
+        temp_id: TempId, // Ergebnis-Temp, der die Adresse des Feldes bezeichnet
+        base_addr: TempId, // Adresse des ganzen Structs
+        field_name: String, // Name des Feldes
+    },
+
 }
 
 #[derive(Debug, Clone)]
@@ -151,11 +187,27 @@ pub enum ConstValue {
     Char(char),
     String(String),
     Null,
+
+    Struct {
+        type_name: String,
+        fields: Vec<(String, ConstValue)>,
+    },
+    Variant {
+        type_name: String,
+        case_name: String,
+    }
+
 }
 
 #[derive(Debug, Clone)]
 pub enum Terminator {
     Ret(Option<TempId>), // entweder zb ret %tmp0 bei Some(id) oder ret void bei None
+    Jump{target: String},
+    Branch {
+        condition: TempId,
+        then_block: String,
+        else_block: String,
+    }
 }
 
 #[derive(Debug, Clone,PartialEq)]
@@ -200,7 +252,7 @@ impl IrGenerator {
     fn insert_variable(&mut self, name: String, ty: IrType, addr: TempId) {
         self.scopes.last_mut().expect("No active scope").symbols.insert(name.clone(), Variable { name, ty, addr });
     }
-    fn lookup_variable(&mut self, name: &str) -> Option<&Variable> {
+    fn lookup_variable(&self, name: &str) -> Option<&Variable> {
         self.scopes.iter().rev().find_map(|scope| scope.symbols.get(name))
     }
 
@@ -331,15 +383,10 @@ impl IrGenerator {
         match expr {
             Expr::Variable(name) => {
 
-                // holy codeeeeeeeeeeeeeeeeeeee (schörmsen)
-              let var = self.lookup_variable(name);
-                if let None = var {
-                    return Err(CodegenError::UnknwonVariable(name.clone()));
-                }
-                let var = var.unwrap().clone();
-
-
               let freie_temp_var = self.next_temp_id();
+
+              let var = self.lookup_variable(name).ok_or_else(|| CodegenError::UnknwonVariable(name.clone()))?;
+
 
               block.instructions.push(IrInstruction::Load {
                   temp_id: freie_temp_var,
