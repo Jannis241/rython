@@ -91,10 +91,10 @@ fn assert_const_value(actual: &ConstValue, expected: &ConstValue) {
 
 fn assert_ret(terminator: &Terminator, expected_temp: Option<&str>) {
     match (terminator, expected_temp) {
-        (Terminator::ret(Some(temp_id)), Some(expected_temp)) => {
+        (Terminator::Ret(Some(temp_id)), Some(expected_temp)) => {
             assert_eq!(temp_debug(temp_id), expected_temp);
         }
-        (Terminator::ret(None), None) => {}
+        (Terminator::Ret(None), None) => {}
         _ => panic!("expected ret {expected_temp:?}, got {terminator:?}"),
     }
 }

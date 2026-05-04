@@ -7,5 +7,5 @@ pub fn run(file_name: &str) {
     dbg!(&tokens);
     let mut parser = rython_to_ir::parser::Parser::new(tokens);
     let ast = parser.parse();
-    dbg!(ast);
+    let _ = dbg!(ast);
 }

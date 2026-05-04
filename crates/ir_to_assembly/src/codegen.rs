@@ -13,7 +13,7 @@ pub struct AsmCodeGen {
 }
 
 impl AsmCodeGen {
-    fn gen_asm(input: IrModule) -> String {
+    pub fn gen_asm(input: IrModule) -> String {
         let mut asm_code_gen = AsmCodeGen {
             out: String::new(),
             input,
@@ -31,25 +31,36 @@ impl AsmCodeGen {
             self.generate_function(function);
         }
     }
-    fn generate_function(&mut self, function: IrFunction) {}
+    fn generate_function(&mut self, _function: IrFunction) {}
     fn generate_globals(&mut self) {
         for global in self.input.globals.clone() {
-            let typ = global.ty;
-            let name = global.name;
-            let value = global.value;
-
             emit!(self, "section .data\n");
+            emit!(self, "{}: dq {}\n", global.name, const_value_to_asm(global.value));
         }
     }
-    fn generate_constants(&mut self) {}
+    fn generate_constants(&mut self) {
+        for constant in self.input.constants.clone() {
+            emit!(self, "section .rodata\n");
+            emit!(self, "{}: dq {}\n", constant.name, const_value_to_asm(constant.value));
+        }
+    }
 }
 
-fn get_type_size_in_qds(typ: IrType) -> usize {
+pub fn get_type_size_in_qds(typ: IrType) -> usize {
     match typ {
         IrType::I64 => 1,
         IrType::F64 => 1,
         IrType::Bool => 1,
         IrType::Void => 0,
         _ => todo!(),
+    }
+}
+
+fn const_value_to_asm(value: ConstValue) -> String {
+    match value {
+        ConstValue::Int(value) => value.to_string(),
+        ConstValue::Bool(value) => usize::from(value).to_string(),
+        ConstValue::Null => "0".to_string(),
+        other => todo!("constant value {other:?} is not supported by asm codegen"),
     }
 }

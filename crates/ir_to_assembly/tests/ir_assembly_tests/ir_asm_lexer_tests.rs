@@ -1,8 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
-    fn lexer_test() {
-    }
+    fn lexer_test_harness_is_wired() {}
 }

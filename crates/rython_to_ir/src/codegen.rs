@@ -75,7 +75,7 @@ pub enum IrInstruction {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TempId(usize);
+pub struct TempId(pub usize);
 
 #[derive(Debug, Clone)]
 pub enum ConstValue {
@@ -89,7 +89,7 @@ pub enum ConstValue {
 
 #[derive(Debug, Clone)]
 pub enum Terminator {
-    ret(Option<TempId>), // entweder zb ret %tmp0 bei Some(id) oder ret void bei None
+    Ret(Option<TempId>), // entweder zb ret %tmp0 bei Some(id) oder ret void bei None
 }
 
 #[derive(Debug, Clone)]
@@ -119,7 +119,7 @@ impl IrGenerator {
         let mut entry_block = IrBlock {
             label: "entry:".to_string(),
             instructions: Vec::new(),
-            terminator: Terminator::ret(None), // jede function hat einen terminator wie return,
+            terminator: Terminator::Ret(None), // jede function hat einen terminator wie return,
                                                // falls es kein return in der eigentlich function gibt ist es einfach ret(none) also
                                                // return void
         };
@@ -160,11 +160,11 @@ impl IrGenerator {
                         let temp_id = self.gen_expr(value, block); // Expr handeln -> macht sein eigenes Ding und
                         // editiert die instructions des blocks. Return gibt nicht das ergebnis der
                         // expr selber zurück sondern nur die variable also brauchen wir die temp id
-                        block.terminator = Terminator::ret(Some(temp_id));
+                        block.terminator = Terminator::Ret(Some(temp_id));
                     }
                     // Eigentlich unnötig, da block.terminator by default schon None ist aber egal
                     None => {
-                        block.terminator = Terminator::ret(None);
+                        block.terminator = Terminator::Ret(None);
                     }
                 }
             }
