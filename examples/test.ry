@@ -1,4 +1,3 @@
-fn operator[] main(myparam: any car) T {
-    print("hello");
-    let x: int = 10;
+fn test(a: int, b: int) int {
+    return 10;
 }
