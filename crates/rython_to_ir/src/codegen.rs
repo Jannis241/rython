@@ -191,8 +191,24 @@ impl IrGenerator {
         IrGenerator { temp_counter: 0, current_expected_return_type: IrType::Void, scopes: Vec::new() }
     }
 
+    fn enter_scope(&mut self) {
+        self.scopes.push(Scope { symbols: HashMap::new() });
+    }
+    fn exit_scope(&mut self) {
+        self.scopes.pop();
+    }
+    fn insert_variable(&mut self, name: String, ty: IrType, addr: TempId) {
+        self.scopes.last_mut().expect("No active scope").symbols.insert(name.clone(), Variable { name, ty, addr });
+    }
+    fn lookup_variable(&mut self, name: &str) -> Option<&Variable> {
+        self.scopes.iter().rev().find_map(|scope| scope.symbols.get(name))
+    }
+
+
     fn gen_func_struct(&mut self, function: &Function) -> Result<IrFunction, CodegenError> {
        self.temp_counter = 0;
+        self.scopes.clear();
+        self.enter_scope();
        self.current_expected_return_type = Self::convert_to_ir_type(&function.return_type.clone().unwrap_or(Type::Named("void".to_string())));
         // Entry block ist erstmal der main block der function und wird leer erstellt
         let mut entry_block = IrBlock {
@@ -210,6 +226,7 @@ impl IrGenerator {
             // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
             // werden kann ohne immer etwas returnen zu müssen
         }
+        self.exit_scope();
 
 
         Ok(IrFunction {
@@ -261,6 +278,8 @@ impl IrGenerator {
                 // welche die variable id_for_alloc hält
                 block.instructions.push(IrInstruction::Store { ty: ir_type.clone(), value: expr_value, addr: id_for_alloc });
 
+                self.insert_variable(l.var_name.clone(), ir_type, id_for_alloc);
+
                 Ok(())
             }
             Stmt::Return(ret) => {
@@ -310,6 +329,26 @@ impl IrGenerator {
         // zurück geben wo das ergebnis der expr genau gespeichert wird, damit aufrufende methoden
         // das nutzen können (wie zb return)
         match expr {
+            Expr::Variable(name) => {
+
+                // holy codeeeeeeeeeeeeeeeeeeee (schörmsen)
+              let var = self.lookup_variable(name);
+                if let None = var {
+                    return Err(CodegenError::UnknwonVariable(name.clone()));
+                }
+                let var = var.unwrap().clone();
+
+
+              let freie_temp_var = self.next_temp_id();
+
+              block.instructions.push(IrInstruction::Load {
+                  temp_id: freie_temp_var,
+                  ty: var.ty.clone(),
+                  addr: var.addr,
+              });
+
+              Ok((freie_temp_var, var.ty.clone()))
+            }
             Expr::IntLiteral(value) => {
                 let temp_id = self.next_temp_id();
 
@@ -392,6 +431,8 @@ impl IrGenerator {
 pub enum CodegenError {
     InvalidItem(Item),
     MismatchedTypes,
+
+    UnknwonVariable(String),
 
     InvalidIntLiteral(String),
     InvalidFloatLiteral(String),
