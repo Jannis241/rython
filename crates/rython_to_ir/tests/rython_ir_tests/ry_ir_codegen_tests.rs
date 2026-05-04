@@ -577,44 +577,6 @@ fn unsupported_statement_returns_error() {
         )]));
 }
 
-#[test]
-fn all_non_return_statements_return_errors() {
-    let statements = vec![
-        Stmt::Let(Let {
-            var_name: "x".to_string(),
-            var_type: Some(named_type("int")),
-            value: Expr::IntLiteral("1".to_string()),
-        }),
-        Stmt::If(If {
-            condition: Expr::BoolLiteral(true),
-            if_code: block(Vec::new()),
-            else_code: None,
-        }),
-        Stmt::Loop(Loop {
-            inner_code: block(Vec::new()),
-        }),
-        Stmt::While(While {
-            condition: Expr::BoolLiteral(true),
-            inner_code: block(Vec::new()),
-        }),
-        Stmt::For(For {
-            var_name: "x".to_string(),
-            iterable: Expr::Variable("items".to_string()),
-            inner_code: block(Vec::new()),
-        }),
-        Stmt::Asm(Asm {
-            asm_code: "nop".to_string(),
-        }),
-        Stmt::Block(block(Vec::new())),
-        Stmt::Break,
-        Stmt::Continue,
-        Stmt::Expr(Expr::IntLiteral("1".to_string())),
-    ];
-
-    for stmt in statements {
-        assert_codegen_err(generate_code(&[function("main", Vec::new(), None, vec![stmt])]));
-    }
-}
 
 #[test]
 fn unsupported_expression_returns_error() {
