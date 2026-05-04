@@ -959,7 +959,7 @@ impl Parser {
 
         Ok(Stmt::Let(Let {
             var_name: name,
-            var_type: Some(var_type),
+            var_type: var_type,
             value,
         }))
     }

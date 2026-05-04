@@ -147,7 +147,7 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub struct Let {
     pub var_name: String,
-    pub var_type: Option<Type>,
+    pub var_type: Type,
     pub value: Expr,
 }
 
