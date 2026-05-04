@@ -1,7 +1,3 @@
-[package]
-name = "rython"
-version = "0.1.0"
-edition = "2024"
 
 [workspace]
 members = [
@@ -13,7 +9,3 @@ members = [
 default-members = ["crates/rython_cli"]
 resolver = "2"
 
-[dev-dependencies]
-ir_to_assembly = { path = "crates/ir_to_assembly" }
-manager = { path = "crates/manager" }
-rython_to_ir = { path = "crates/rython_to_ir" }

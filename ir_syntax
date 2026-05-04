@@ -1,6 +1,0 @@
-label:
-    t1 = 10
-    t2 = 20 + t1
-
-    jump label
-
