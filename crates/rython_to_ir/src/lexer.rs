@@ -160,7 +160,6 @@ impl Lexer {
             Some('.') => Token::new(TokenKind::Dot, ".".to_string()),
 
             _ => {
-
                 return Err(LexingError::InvalidChar(self.current_char.unwrap()));
             }
         };
@@ -274,14 +273,14 @@ impl Lexer {
     fn handle_idents(&mut self) -> Token {
         let mut ident = String::new();
         ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
-        // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
+                                                // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
 
         while self
             .peek()
             .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             ident.push(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
-            // ob self.peek Some ist
+                                              // ob self.peek Some ist
             self.advance();
         }
 
@@ -313,7 +312,22 @@ impl Lexer {
             "and" => Token::new(TokenKind::And, ident),
             "or" => Token::new(TokenKind::Or, ident),
             "operator" => Token::new(TokenKind::Operator, ident),
-            "asm" => Token::new(TokenKind::Asm, ident),
+            "asm" => {
+                self.advance();
+                let mut asm = String::new();
+                self.advance();
+                loop {
+                    if self.peek() == Some('}') {
+                        self.advance();
+                        break Token::new(TokenKind::Asm, asm);
+                    }
+                    if self.peek().is_none() {
+                        todo!(r#"error implementen for: expected }} found EOF"#);
+                    }
+                    asm.push(self.peek().unwrap());
+                    self.advance();
+                }
+            }
             _ => Token::new(TokenKind::Ident, ident),
         };
 
@@ -382,7 +396,7 @@ impl Lexer {
         let mut is_float = false;
 
         number.push(self.current_char.unwrap()); // unwrap ist safe da die methode nur bei
-        // Some() aufgerufen wird
+                                                 // Some() aufgerufen wird
 
         while self
             .peek()

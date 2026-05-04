@@ -26,6 +26,7 @@ pub enum Item {
     Variant(Variant),
     TraitImplementation(TraitImplementation),
     Import(Import),
+    Asm(Asm),
 }
 
 //-----------------FUNCTION--------------------
@@ -385,6 +386,7 @@ fn print_item(item: &Item, level: usize) {
                 print_item(&Item::Function(f.clone()), level + 1);
             }
         }
+        _ => todo!(),
     }
 }
 

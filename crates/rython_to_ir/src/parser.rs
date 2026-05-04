@@ -1075,13 +1075,7 @@ impl Parser {
 
     fn parse_asm(&mut self) -> Result<Stmt, ParseError> {
         self.expect_current(TokenKind::Asm)?;
-        self.advance()?;
-        self.expect_current(TokenKind::LParen)?;
-        self.advance()?;
-        self.expect_current(TokenKind::StringLiteral)?;
         let asm_code = self.current()?.value;
-        self.advance()?;
-        self.expect_current(TokenKind::RParen)?;
         self.advance()?;
         self.expect_current(TokenKind::Semicolon)?;
         self.advance()?;
@@ -1112,6 +1106,13 @@ impl Parser {
                 TokenKind::Impl => self.parse_trait_implementation()?,
                 TokenKind::Eof => break,
                 TokenKind::Semicolon => self.advance()?,
+                TokenKind::Asm => {
+                    let asm_stmt = self.parse_asm()?;
+                    let Stmt::Asm(asm) = asm_stmt else {
+                        unreachable!()
+                    };
+                    self.ast.push(Item::Asm(asm));
+                }
                 other => return Err(ParseError::UnexpectedTopLevel(other)),
             }
         }

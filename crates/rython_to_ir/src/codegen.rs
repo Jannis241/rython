@@ -1,9 +1,10 @@
 use std::{collections::HashMap, process::Termination};
 
-use crate::ast::{Expr, Function, Item, Stmt, Type};
+use crate::ast::{Asm, Expr, Function, Item, Stmt, Type};
 
 #[derive(Debug, Clone)]
 pub struct IrModule {
+    pub inline_assembly: Vec<String>,
     pub functions: Vec<IrFunction>,
     pub globals: Vec<IrGlobal>,
     pub constants: Vec<IrConstant>,
@@ -29,7 +30,6 @@ pub struct IrField {
     pub ty: IrType,
 }
 
-
 #[derive(Debug, Clone)]
 pub enum IrTypeDef {
     Struct { name: String, fields: Vec<IrField> },
@@ -39,6 +39,7 @@ pub enum IrTypeDef {
 impl IrModule {
     pub fn new() -> Self {
         IrModule {
+            inline_assembly: Vec::new(),
             functions: Vec::new(),
             constants: Vec::new(),
             globals: Vec::new(),
@@ -71,42 +72,42 @@ pub struct IrBlock {
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     Const {
-      temp_id: TempId, // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
-      ty: IrType, // Typ des konstanten Werts
-      value: ConstValue, // der konkrete konstante Wert
+        temp_id: TempId,   // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
+        ty: IrType,        // Typ des konstanten Werts
+        value: ConstValue, // der konkrete konstante Wert
     },
 
     Alloca {
-      temp_id: TempId, // Ergebnis-Temp, der die neu reservierte Adresse bezeichnet
-      ty: IrType, // Typ des Werts, der an dieser Adresse gespeichert werden darf
+        temp_id: TempId, // Ergebnis-Temp, der die neu reservierte Adresse bezeichnet
+        ty: IrType,      // Typ des Werts, der an dieser Adresse gespeichert werden darf
     },
 
     Load {
-      temp_id: TempId, // Ergebnis-Temp, in dem der gelesene Wert landet
-      ty: IrType, // Typ des gelesenen Werts
-      addr: TempId, // Adresse, aus der gelesen wird
+        temp_id: TempId, // Ergebnis-Temp, in dem der gelesene Wert landet
+        ty: IrType,      // Typ des gelesenen Werts
+        addr: TempId,    // Adresse, aus der gelesen wird
     },
 
     Store {
-      ty: IrType, // Typ des Werts, der geschrieben wird
-      value: TempId, // Wert-Temp, der geschrieben wird
-      addr: TempId, // Adresse, in die geschrieben wird
+        ty: IrType,    // Typ des Werts, der geschrieben wird
+        value: TempId, // Wert-Temp, der geschrieben wird
+        addr: TempId,  // Adresse, in die geschrieben wird
     },
 
     Binary {
-      temp_id: TempId, // Ergebnis-Temp der Binary-Operation
-      ty: IrType, // Typ des Ergebnisses
-      op: IrBinaryOp, // Operation, z.B. Add oder Eq
-      lhs: TempId, // linker Operand als Wert-Temp
-      rhs: TempId, // rechter Operand als Wert-Temp
+        temp_id: TempId, // Ergebnis-Temp der Binary-Operation
+        ty: IrType,      // Typ des Ergebnisses
+        op: IrBinaryOp,  // Operation, z.B. Add oder Eq
+        lhs: TempId,     // linker Operand als Wert-Temp
+        rhs: TempId,     // rechter Operand als Wert-Temp
     },
 
     // functions
     Call {
         temp_id: Option<TempId>, // Ergebnis-Temp fuer den Rueckgabewert; None bei void
-        function_name: String, // Name der aufgerufenen Funktion
-        args: Vec<TempId>, // Wert-Temps der bereits berechneten Argumente
-        return_type: IrType, // Rueckgabetyp der Funktion
+        function_name: String,   // Name der aufgerufenen Funktion
+        args: Vec<TempId>,       // Wert-Temps der bereits berechneten Argumente
+        return_type: IrType,     // Rueckgabetyp der Funktion
     },
     GlobalAddr {
         temp_id: TempId,
@@ -118,38 +119,37 @@ pub enum IrInstruction {
     },
 
     InitVariant {
-      temp_id: TempId, // Ergebnis-Temp des erzeugten Variant-Werts
-      ty: IrType, // Typ der Variant, z.B. Named("Option")
-      case_name: String, // ausgewaehlter Fall, z.B. Some oder None
-  },
+        temp_id: TempId,   // Ergebnis-Temp des erzeugten Variant-Werts
+        ty: IrType,        // Typ der Variant, z.B. Named("Option")
+        case_name: String, // ausgewaehlter Fall, z.B. Some oder None
+    },
 
     Unary {
-      temp_id: TempId, // Ergebnis-Temp der Unary-Operation
-      ty: IrType, // Typ des Ergebnisses
-      op: IrUnaryOp, // Operation, z.B. Neg oder Not
-      value: TempId, // Operand als Wert-Temp
+        temp_id: TempId, // Ergebnis-Temp der Unary-Operation
+        ty: IrType,      // Typ des Ergebnisses
+        op: IrUnaryOp,   // Operation, z.B. Neg oder Not
+        value: TempId,   // Operand als Wert-Temp
     },
     InitArray {
-        temp_id: TempId, // Ergebnis-Temp des erzeugten Array-Werts
-        element_type: IrType, // Typ der Array-Elemente
+        temp_id: TempId,       // Ergebnis-Temp des erzeugten Array-Werts
+        element_type: IrType,  // Typ der Array-Elemente
         elements: Vec<TempId>, // Wert-Temps der Elemente
     },
-    GetElementAddr{
-        temp_id: TempId, // Ergebnis-Temp, der die Adresse des Elements bezeichnet
+    GetElementAddr {
+        temp_id: TempId,   // Ergebnis-Temp, der die Adresse des Elements bezeichnet
         base_addr: TempId, // Adresse des Arrays
-        index: TempId, // Wert-Temp des Index
+        index: TempId,     // Wert-Temp des Index
     },
     InitStruct {
-        temp_id: TempId, // Ergebnis-Temp des erzeugten Struct-Werts
-        ty: IrType, // Typ des Structs, z.B. Named("Point")
+        temp_id: TempId,               // Ergebnis-Temp des erzeugten Struct-Werts
+        ty: IrType,                    // Typ des Structs, z.B. Named("Point")
         fields: Vec<(String, TempId)>, // Feldname und Wert-Temp des jeweiligen Feldwerts
     },
     GetFieldAddr {
-        temp_id: TempId, // Ergebnis-Temp, der die Adresse des Feldes bezeichnet
-        base_addr: TempId, // Adresse des ganzen Structs
+        temp_id: TempId,    // Ergebnis-Temp, der die Adresse des Feldes bezeichnet
+        base_addr: TempId,  // Adresse des ganzen Structs
         field_name: String, // Name des Feldes
     },
-
 }
 
 #[derive(Debug, Clone)]
@@ -203,22 +203,23 @@ pub enum ConstValue {
     Variant {
         type_name: String,
         case_name: String,
-    }
-
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum Terminator {
     Ret(Option<TempId>), // entweder zb ret %tmp0 bei Some(id) oder ret void bei None
-    Jump{target: String},
+    Jump {
+        target: String,
+    },
     Branch {
         condition: TempId,
         then_block: String,
         else_block: String,
-    }
+    },
 }
 
-#[derive(Debug, Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IrType {
     I64,
     Bool,
@@ -235,7 +236,7 @@ pub struct Variable {
 }
 #[derive(Debug, Clone)]
 pub struct Scope {
-    symbols: HashMap<String, Variable> // name, variable
+    symbols: HashMap<String, Variable>, // name, variable
 }
 
 #[derive(Debug, Clone)]
@@ -244,33 +245,51 @@ pub struct IrGenerator {
     type_defs: HashMap<String, IrTypeDef>,
     current_expected_return_type: IrType,
     scopes: Vec<Scope>, // Scope ist einfach eine hashmap welche die variablen aus dem scope
-    // speichert
+                        // speichert
 }
 
 impl IrGenerator {
     fn new() -> Self {
-        IrGenerator { temp_counter: 0, current_expected_return_type: IrType::Void, scopes: Vec::new(), type_defs: HashMap::new() }
+        IrGenerator {
+            temp_counter: 0,
+            current_expected_return_type: IrType::Void,
+            scopes: Vec::new(),
+            type_defs: HashMap::new(),
+        }
     }
 
     fn enter_scope(&mut self) {
-        self.scopes.push(Scope { symbols: HashMap::new() });
+        self.scopes.push(Scope {
+            symbols: HashMap::new(),
+        });
     }
     fn exit_scope(&mut self) {
         self.scopes.pop();
     }
     fn insert_variable(&mut self, name: String, ty: IrType, addr: TempId) {
-        self.scopes.last_mut().expect("No active scope").symbols.insert(name.clone(), Variable { name, ty, addr });
+        self.scopes
+            .last_mut()
+            .expect("No active scope")
+            .symbols
+            .insert(name.clone(), Variable { name, ty, addr });
     }
     fn lookup_variable(&self, name: &str) -> Option<&Variable> {
-        self.scopes.iter().rev().find_map(|scope| scope.symbols.get(name))
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.symbols.get(name))
     }
 
-
     fn gen_func_struct(&mut self, function: &Function) -> Result<IrFunction, CodegenError> {
-       self.temp_counter = 0;
+        self.temp_counter = 0;
         self.scopes.clear();
         self.enter_scope();
-       self.current_expected_return_type = Self::convert_to_ir_type(&function.return_type.clone().unwrap_or(Type::Named("void".to_string())));
+        self.current_expected_return_type = Self::convert_to_ir_type(
+            &function
+                .return_type
+                .clone()
+                .unwrap_or(Type::Named("void".to_string())),
+        );
         // Entry block ist erstmal der main block der function und wird leer erstellt
         let mut entry_block = IrBlock {
             label: "entry:".to_string(),
@@ -283,12 +302,11 @@ impl IrGenerator {
 
         for stmt in &function.body.statements {
             self.gen_stmt(stmt, &mut entry_block)?; // jedes statement aus der function handeln
-            // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
-            // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
-            // werden kann ohne immer etwas returnen zu müssen
+                                                    // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
+                                                    // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
+                                                    // werden kann ohne immer etwas returnen zu müssen
         }
         self.exit_scope();
-
 
         Ok(IrFunction {
             name: function.name.clone(),
@@ -308,16 +326,18 @@ impl IrGenerator {
             blocks: vec![entry_block], // Todo: mehrere blöcke ??
         })
     }
-    fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) -> Result<(), CodegenError>{
+    fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) -> Result<(), CodegenError> {
         match stmt {
             Stmt::Let(l) => {
                 let ir_type = Self::convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein???
 
-
                 let id_for_alloc = self.next_temp_id();
 
                 // id_for_alloc ist der name der temp variable, welche die freie Adresse hält
-                block.instructions.push(IrInstruction::Alloca { temp_id: id_for_alloc, ty: ir_type.clone() });
+                block.instructions.push(IrInstruction::Alloca {
+                    temp_id: id_for_alloc,
+                    ty: ir_type.clone(),
+                });
 
                 // self.gen_expr returnt den name der temp variable, welcher zur Laufzeit das
                 // Ergebnis halten wird
@@ -337,7 +357,11 @@ impl IrGenerator {
 
                 // Die temp variable welche das ergebnis der eval hält wird in die addr geladen
                 // welche die variable id_for_alloc hält
-                block.instructions.push(IrInstruction::Store { ty: ir_type.clone(), value: expr_value, addr: id_for_alloc });
+                block.instructions.push(IrInstruction::Store {
+                    ty: ir_type.clone(),
+                    value: expr_value,
+                    addr: id_for_alloc,
+                });
 
                 self.insert_variable(l.var_name.clone(), ir_type, id_for_alloc);
 
@@ -350,25 +374,36 @@ impl IrGenerator {
                 match return_value {
                     Some(value) => {
                         let (temp_id, ret_t) = self.gen_expr(value, block)?; // Expr handeln -> macht sein eigenes Ding und
-                        // editiert die instructions des blocks. Return gibt nicht das ergebnis der
-                        // expr selber zurück sondern nur die variable also brauchen wir die temp id
+                                                                             // editiert die instructions des blocks. Return gibt nicht das ergebnis der
+                                                                             // expr selber zurück sondern nur die variable also brauchen wir die temp id
                         if (ret_t != self.current_expected_return_type) {
-                            return Err(CodegenError::InvalidReturnType(self.current_expected_return_type.clone(), ret_t))
+                            return Err(CodegenError::InvalidReturnType(
+                                self.current_expected_return_type.clone(),
+                                ret_t,
+                            ));
                         }
                         block.terminator = Terminator::Ret(Some(temp_id));
-
 
                         Ok(())
                     }
                     // Eigentlich unnötig, da block.terminator by default schon None ist aber egal
                     None => {
                         if (IrType::Void != self.current_expected_return_type) {
-                            return Err(CodegenError::InvalidReturnType(self.current_expected_return_type.clone(), IrType::Void))
+                            return Err(CodegenError::InvalidReturnType(
+                                self.current_expected_return_type.clone(),
+                                IrType::Void,
+                            ));
                         }
                         block.terminator = Terminator::Ret(None);
                         Ok(())
                     }
                 }
+            }
+            Stmt::Asm(asm) => {
+                block.instructions.push(IrInstruction::Asm {
+                    code: asm.asm_code.clone(),
+                });
+                Ok(())
             }
             _ => {
                 return Err(CodegenError::InvalidStatement(stmt.clone()));
@@ -385,30 +420,36 @@ impl IrGenerator {
         return id;
     }
 
-    fn gen_expr(&mut self, expr: &Expr, block: &mut IrBlock) -> Result<(TempId, IrType), CodegenError> {
+    fn gen_expr(
+        &mut self,
+        expr: &Expr,
+        block: &mut IrBlock,
+    ) -> Result<(TempId, IrType), CodegenError> {
         // Expr handeln: Instructions in dem Block je nach expression verändern und die temp id
         // zurück geben wo das ergebnis der expr genau gespeichert wird, damit aufrufende methoden
         // das nutzen können (wie zb return)
         match expr {
             Expr::Variable(name) => {
+                let freie_temp_var = self.next_temp_id();
 
-              let freie_temp_var = self.next_temp_id();
+                let var = self
+                    .lookup_variable(name)
+                    .ok_or_else(|| CodegenError::UnknwonVariable(name.clone()))?;
 
-              let var = self.lookup_variable(name).ok_or_else(|| CodegenError::UnknwonVariable(name.clone()))?;
+                block.instructions.push(IrInstruction::Load {
+                    temp_id: freie_temp_var,
+                    ty: var.ty.clone(),
+                    addr: var.addr,
+                });
 
-
-              block.instructions.push(IrInstruction::Load {
-                  temp_id: freie_temp_var,
-                  ty: var.ty.clone(),
-                  addr: var.addr,
-              });
-
-              Ok((freie_temp_var, var.ty.clone()))
+                Ok((freie_temp_var, var.ty.clone()))
             }
             Expr::IntLiteral(value) => {
                 let temp_id = self.next_temp_id();
 
-                let val = value.parse().map_err(|e| CodegenError::InvalidIntLiteral(value.clone()))?;
+                let val = value
+                    .parse()
+                    .map_err(|e| CodegenError::InvalidIntLiteral(value.clone()))?;
                 let new_const_instruction = IrInstruction::Const {
                     temp_id: temp_id,
                     ty: IrType::I64,
@@ -421,7 +462,9 @@ impl IrGenerator {
             Expr::FloatLiteral(value) => {
                 let temp_id = self.next_temp_id();
 
-                let val = value.parse().map_err(|e| CodegenError::InvalidFloatLiteral(value.clone()))?;
+                let val = value
+                    .parse()
+                    .map_err(|e| CodegenError::InvalidFloatLiteral(value.clone()))?;
 
                 let new_const_instruction = IrInstruction::Const {
                     temp_id: temp_id,
@@ -458,7 +501,6 @@ impl IrGenerator {
                 block.instructions.push(new_const_instruction);
 
                 return Ok((temp_id, IrType::Named("string".to_string())));
-
             }
             other => {
                 return Err(CodegenError::InvalidExpr(other.clone()));
@@ -480,7 +522,6 @@ impl IrGenerator {
             }
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -495,7 +536,7 @@ pub enum CodegenError {
 
     InvalidExpr(Expr),
     InvalidStatement(Stmt),
-    InvalidReturnType(IrType, IrType) // expected, got
+    InvalidReturnType(IrType, IrType), // expected, got
 }
 
 pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
@@ -507,6 +548,10 @@ pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
             Item::Function(f) => {
                 let func = generator.gen_func_struct(f)?;
                 module.functions.push(func);
+            }
+            Item::Asm(asm) => {
+                let Asm { asm_code } = asm;
+                module.inline_assembly.push(asm_code.clone());
             }
             _ => return Err(CodegenError::InvalidItem(item.clone())),
         };
