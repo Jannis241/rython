@@ -233,6 +233,7 @@ pub struct Scope {
 #[derive(Debug, Clone)]
 pub struct IrGenerator {
     temp_counter: usize,
+    type_defs: HashMap<String, IrTypeDef>,
     current_expected_return_type: IrType,
     scopes: Vec<Scope>, // Scope ist einfach eine hashmap welche die variablen aus dem scope
     // speichert
@@ -240,7 +241,7 @@ pub struct IrGenerator {
 
 impl IrGenerator {
     fn new() -> Self {
-        IrGenerator { temp_counter: 0, current_expected_return_type: IrType::Void, scopes: Vec::new() }
+        IrGenerator { temp_counter: 0, current_expected_return_type: IrType::Void, scopes: Vec::new(), type_defs: HashMap::new() }
     }
 
     fn enter_scope(&mut self) {
