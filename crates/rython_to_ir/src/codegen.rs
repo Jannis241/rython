@@ -2,15 +2,49 @@ use std::fmt::Write;
 
 use crate::{ast::{Expr, Function, Item, Stmt, Type}, lexer::Token};
 
-// Module hält alle ober Items also alles was in der oberen ebene im file stehen könnte
 #[derive(Debug,Clone)]
 pub struct IrModule {
     pub functions: Vec<IrFunction>,
-    // Todo: weitere dinge wie globale variablen, imports, traits etc
+    pub globals: Vec<IrGlobal>,
+    pub constants: Vec<IrConstant>,
+    pub types: Vec<IrTypeDef>
 }
+
+#[derive(Debug,Clone)]
+pub struct IrGlobal {
+    pub name: String,
+    pub ty: IrType,
+    pub value: Option<ConstValue>,
+}
+#[derive(Debug,Clone)]
+pub struct IrConstant {
+    pub name: String,
+    pub ty: IrType,
+    pub value: ConstValue,
+}
+
+#[derive(Debug,Clone)]
+pub struct IrField {
+    pub name: String,
+    pub ty: IrType,
+}
+
+#[derive(Debug,Clone)]
+pub enum IrTypeDef {
+    Struct {
+        name: String,
+        fields: Vec<IrField>,
+    },
+    Variant {
+        name: String,
+        cases: Vec<String>,
+    }
+}
+
+
 impl IrModule {
     pub fn new() -> Self {
-        IrModule { functions: Vec::new() }
+        IrModule { functions: Vec::new(), constants: Vec::new(), globals: Vec::new(), types: Vec::new()}
     }
 }
 
