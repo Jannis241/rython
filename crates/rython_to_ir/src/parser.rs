@@ -19,7 +19,7 @@ pub enum ParseError {
 pub struct Parser {
     tokens: Vec<Token>,
     ast: Vec<Item>,
-    current_idx: usize,
+    pub current_idx: usize,
     allow_struct_literal: bool,
 }
 
@@ -783,10 +783,10 @@ impl Parser {
         let generic_params = self.parse_generic_params()?;
         let params = self.parse_params()?;
 
-        let return_type = if self.current()?.kind == TokenKind::LBrace {
-            None
+        let return_type = if let Ok(typ) = self.parse_type() {
+            Some(typ)
         } else {
-            Some(self.parse_type()?)
+            None
         };
 
         self.expect_current(TokenKind::LBrace)?;
