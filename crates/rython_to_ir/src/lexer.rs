@@ -95,8 +95,13 @@ pub struct Lexer {
     chars: Vec<char>,
 }
 
+#[derive(Debug)]
+pub enum LexingError {
+    InvalidChar(char),
+}
+
 impl Lexer {
-    pub fn create_tokens(input: String) -> Vec<Token> {
+    pub fn create_tokens(input: String) -> Result<Vec<Token>, LexingError> {
         let chars: Vec<char> = input.chars().collect();
 
         let mut lexer = Lexer {
@@ -111,12 +116,12 @@ impl Lexer {
             .last()
             .is_none_or(|last: &Token| last.kind != TokenKind::Eof)
         {
-            tokens.push(lexer.create_next_token());
+            tokens.push(lexer.create_next_token()?);
         }
 
-        return tokens;
+        return Ok(tokens);
     }
-    fn create_next_token(&mut self) -> Token {
+    fn create_next_token(&mut self) -> Result<Token, LexingError> {
         self.skip_ignored();
 
         let token = match self.current_char {
@@ -155,16 +160,14 @@ impl Lexer {
             Some('.') => Token::new(TokenKind::Dot, ".".to_string()),
 
             _ => {
-                panic!(
-                    "Lexing Error: Could not convert {:?} into Token.",
-                    self.current_char
-                )
+
+                return Err(LexingError::InvalidChar(self.current_char.unwrap()));
             }
         };
 
         self.advance();
 
-        return token;
+        return Ok(token);
     }
     fn skip_ignored(&mut self) {
         loop {
