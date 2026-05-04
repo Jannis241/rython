@@ -285,6 +285,7 @@ impl Parser {
         let op = match self.current()?.kind {
             TokenKind::Minus => UnaryOp::Neg,
             TokenKind::Tilde => UnaryOp::BitNot,
+            TokenKind::Bang => UnaryOp::Not,
             _ => return self.parse_call(),
         };
         self.advance()?;
@@ -335,6 +336,21 @@ impl Parser {
             TokenKind::False => {
                 self.advance()?;
                 Ok(Expr::BoolLiteral(false))
+            }
+            TokenKind::Null => {
+                self.advance()?;
+                Ok(Expr::NullLiteral)
+            }
+            TokenKind::Char => {
+                self.advance()?;
+                let current = self.current()?;
+                let char_str = current.value;
+
+                assert_eq!(char_str.len(), 1);
+                let chars = char_str.chars().collect::<Vec<char>>();
+                let char = chars.first().unwrap();
+
+                Ok(Expr::CharLiteral(char.clone()))
             }
             TokenKind::StringLiteral => {
                 self.advance()?;

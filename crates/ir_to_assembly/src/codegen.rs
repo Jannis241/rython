@@ -33,7 +33,23 @@ impl AsmCodeGen {
     }
     fn generate_function(&mut self, function: IrFunction) {}
     fn generate_globals(&mut self) {
-        for global in self.input.globals.clone() {}
+        for global in self.input.globals.clone() {
+            let typ = global.ty;
+            let name = global.name;
+            let value = global.value;
+
+            emit!(self, "section .data\n");
+        }
     }
     fn generate_constants(&mut self) {}
+}
+
+fn get_type_size_in_qds(typ: IrType) -> usize {
+    match typ {
+        IrType::I64 => 1,
+        IrType::F64 => 1,
+        IrType::Bool => 1,
+        IrType::Void => 0,
+        _ => todo!(),
+    }
 }

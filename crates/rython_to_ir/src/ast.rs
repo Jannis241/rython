@@ -221,6 +221,8 @@ pub enum Expr {
     FloatLiteral(String),
     BoolLiteral(bool),
     StringLiteral(String),
+    CharLiteral(char),
+    NullLiteral,
     ListLiteral(Vec<Box<Expr>>),
     StructLiteral {
         struct_name: String,
