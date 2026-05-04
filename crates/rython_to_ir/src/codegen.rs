@@ -108,6 +108,14 @@ pub enum IrInstruction {
         args: Vec<TempId>, // Wert-Temps der bereits berechneten Argumente
         return_type: IrType, // Rueckgabetyp der Funktion
     },
+    GlobalAddr {
+        temp_id: TempId,
+        name: String,
+        ty: IrType,
+    },
+    Asm {
+        code: String,
+    },
 
     InitVariant {
       temp_id: TempId, // Ergebnis-Temp des erzeugten Variant-Werts
@@ -303,7 +311,7 @@ impl IrGenerator {
     fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) -> Result<(), CodegenError>{
         match stmt {
             Stmt::Let(l) => {
-                let ir_type = Self::convert_to_ir_type(&l.var_type.clone().unwrap()); // Todo: warum kann var type none sein???
+                let ir_type = Self::convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein???
 
 
                 let id_for_alloc = self.next_temp_id();
