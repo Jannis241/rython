@@ -32,6 +32,8 @@ impl AsmCodeGen {
         }
     }
     fn generate_function(&mut self, function: IrFunction) {}
-    fn generate_globals(&mut self) {}
+    fn generate_globals(&mut self) {
+        for global in self.input.globals.clone() {}
+    }
     fn generate_constants(&mut self) {}
 }
