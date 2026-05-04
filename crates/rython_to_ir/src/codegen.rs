@@ -123,6 +123,7 @@ pub enum IrType {
 pub struct Variable {
     name: String,
     ty: IrType,
+    temp_id: TempId,
 }
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -142,7 +143,7 @@ impl IrGenerator {
         IrGenerator { temp_counter: 0, current_expected_return_type: IrType::Void, scopes: Vec::new() }
     }
 
-    fn gen_func_struct(&mut self, function: &Function) -> IrFunction {
+    fn gen_func_struct(&mut self, function: &Function) -> Result<IrFunction, CodegenError> {
        self.temp_counter = 0;
        self.current_expected_return_type = Self::convert_to_ir_type(&function.return_type.clone().unwrap_or(Type::Named("void".to_string())));
         // Entry block ist erstmal der main block der function und wird leer erstellt
@@ -156,14 +157,14 @@ impl IrGenerator {
         // die eigentlichen statements aus der function in instructions für den entry block machen
 
         for stmt in &function.body.statements {
-            self.gen_stmt(stmt, &mut entry_block); // jedes statement aus der function handeln
+            self.gen_stmt(stmt, &mut entry_block)?; // jedes statement aus der function handeln
             // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
             // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
             // werden kann ohne immer etwas returnen zu müssen
         }
 
 
-        IrFunction {
+        Ok(IrFunction {
             name: function.name.clone(),
             parameter: function
                 .params
@@ -179,7 +180,7 @@ impl IrGenerator {
                 .map(Self::convert_to_ir_type)
                 .unwrap_or(IrType::Void),
             blocks: vec![entry_block], // Todo: mehrere blöcke ??
-        }
+        })
     }
     fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) -> Result<(), CodegenError>{
         match stmt {
@@ -192,16 +193,19 @@ impl IrGenerator {
                         let (temp_id, ret_t) = self.gen_expr(value, block)?; // Expr handeln -> macht sein eigenes Ding und
                         // editiert die instructions des blocks. Return gibt nicht das ergebnis der
                         // expr selber zurück sondern nur die variable also brauchen wir die temp id
-                        block.terminator = Terminator::Ret(Some(temp_id));
                         if (ret_t != self.current_expected_return_type) {
                             return Err(CodegenError::InvalidReturnType(self.current_expected_return_type.clone(), ret_t))
                         }
+                        block.terminator = Terminator::Ret(Some(temp_id));
 
 
                         Ok(())
                     }
                     // Eigentlich unnötig, da block.terminator by default schon None ist aber egal
                     None => {
+                        if (IrType::Void != self.current_expected_return_type) {
+                            return Err(CodegenError::InvalidReturnType(self.current_expected_return_type.clone(), IrType::Void))
+                        }
                         block.terminator = Terminator::Ret(None);
                         Ok(())
                     }
@@ -323,7 +327,7 @@ pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
     for item in items {
         match item {
             Item::Function(f) => {
-                let func = generator.gen_func_struct(f);
+                let func = generator.gen_func_struct(f)?;
                 module.functions.push(func);
             }
             _ => return Err(CodegenError::InvalidItem(item.clone())),
