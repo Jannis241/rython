@@ -70,26 +70,74 @@ pub struct IrBlock {
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     Const {
-        temp_id: TempId,
-        ty: IrType,
-        value: ConstValue,
+      temp_id: TempId,
+      ty: IrType,
+      value: ConstValue,
     },
-    Alloc {
 
+    Alloca {
+      temp_id: TempId, // temp_id ist der Name für die neue adresse
+      ty: IrType, // ty ist der Typ des WErts der an dieser Adresse gespeichert werden darf
     },
+
     Load {
-
+      temp_id: TempId,
+      ty: IrType,
+      addr: TempId,
     },
+
     Store {
-
+      ty: IrType, // typ der wertes der gespeichert wird
+      value: TempId, // die Temp ID des wertes der gespeichert wird
+      addr: TempId, // temp id der adresse in die geschrieben wird
     },
+
     Binary {
-
+      temp_id: TempId,
+      ty: IrType,
+      op: IrBinaryOp,
+      lhs: TempId,
+      rhs: TempId,
     },
+
     Unary {
+      temp_id: TempId,
+      ty: IrType,
+      op: IrUnaryOp,
+      value: TempId,
+    },
+}
 
-    }
+#[derive(Debug, Clone)]
+pub enum IrBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
 
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+
+    And,
+    Or,
+
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+}
+
+#[derive(Debug, Clone)]
+pub enum IrUnaryOp {
+    Neg,
+    Not,
+    BitNot,
 }
 
 #[derive(Clone, Debug, Copy)]
@@ -123,7 +171,7 @@ pub enum IrType {
 pub struct Variable {
     name: String,
     ty: IrType,
-    temp_id: TempId,
+    addr: TempId,
 }
 #[derive(Debug, Clone)]
 pub struct Scope {
@@ -184,6 +232,37 @@ impl IrGenerator {
     }
     fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) -> Result<(), CodegenError>{
         match stmt {
+            Stmt::Let(l) => {
+                let ir_type = Self::convert_to_ir_type(&l.var_type.clone().unwrap()); // Todo: warum kann var type none sein???
+
+
+                let id_for_alloc = self.next_temp_id();
+
+                // id_for_alloc ist der name der temp variable, welche die freie Adresse hält
+                block.instructions.push(IrInstruction::Alloca { temp_id: id_for_alloc, ty: ir_type.clone() });
+
+                // self.gen_expr returnt den name der temp variable, welcher zur Laufzeit das
+                // Ergebnis halten wird
+                // Bsp:
+                // 1+1
+                // %0 = const 1
+                // %1 = const 2
+                // %2 = add %0, %1
+                // dann wäre hier expr_value = %2
+                let (expr_value, expr_type) = self.gen_expr(&l.value, block)?;
+
+                // gucken ob der ir_type welcher vom nutzer angegeben wurde, was die variable für
+                // ein typ hat auch wirklich den selben typ hat wie das ergebnis der expression
+                if (ir_type != expr_type) {
+                    return Err(CodegenError::MismatchedTypes);
+                }
+
+                // Die temp variable welche das ergebnis der eval hält wird in die addr geladen
+                // welche die variable id_for_alloc hält
+                block.instructions.push(IrInstruction::Store { ty: ir_type.clone(), value: expr_value, addr: id_for_alloc });
+
+                Ok(())
+            }
             Stmt::Return(ret) => {
                 let return_value = ret.return_value.as_ref();
                 // --> option <expr> entweder returnt es void oder eine expr
@@ -309,8 +388,10 @@ impl IrGenerator {
 
 }
 
+#[derive(Debug, Clone)]
 pub enum CodegenError {
     InvalidItem(Item),
+    MismatchedTypes,
 
     InvalidIntLiteral(String),
     InvalidFloatLiteral(String),

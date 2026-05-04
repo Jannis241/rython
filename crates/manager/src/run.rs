@@ -12,4 +12,6 @@ pub fn run(file_name: &str) {
     let ast = parser.parse();
     dbg!(&ast);
     let module = codegen::generate_code(&ast.unwrap());
+
+    dbg!(module);
 }
