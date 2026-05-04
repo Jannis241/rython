@@ -1,7 +1,7 @@
 use rython_to_ir::lexer::{Lexer, Token, TokenKind};
 
 fn lex(input: &str) -> Vec<Token> {
-    Lexer::create_tokens(input.to_string())
+    Lexer::create_tokens(input.to_string()).expect("lexing failed")
 }
 
 fn assert_tokens(input: &str, expected: &[(TokenKind, &str)]) {
@@ -52,9 +52,8 @@ fn skips_slash_comments() {
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn hash_comments_are_not_supported() {
-    lex("# comment");
+    assert!(Lexer::create_tokens("# comment".to_string()).is_err());
 }
 
 #[test]
@@ -228,9 +227,8 @@ fn dot_prefixed_decimal_starts_with_dot_token() {
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn number_literals_do_not_allow_underscores() {
-    lex("123_456");
+    assert!(Lexer::create_tokens("123_456".to_string()).is_err());
 }
 
 #[test]
@@ -603,31 +601,26 @@ fn bare_bang_is_tokenized() {
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn unknown_character_panics() {
-    lex("@");
+    assert!(Lexer::create_tokens("@".to_string()).is_err());
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn identifier_cannot_start_with_underscore() {
-    lex("_hidden");
+    assert!(Lexer::create_tokens("_hidden".to_string()).is_err());
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn non_ascii_identifier_start_panics() {
-    lex("äpfel");
+    assert!(Lexer::create_tokens("äpfel".to_string()).is_err());
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn non_ascii_identifier_body_panics() {
-    lex("aä");
+    assert!(Lexer::create_tokens("aä".to_string()).is_err());
 }
 
 #[test]
-#[should_panic(expected = "Could not convert")]
 fn unicode_whitespace_panics() {
-    lex("let\u{00a0}x");
+    assert!(Lexer::create_tokens("let\u{00a0}x".to_string()).is_err());
 }

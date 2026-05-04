@@ -36,17 +36,17 @@ fn parse_items_from(parts: Vec<Token>) -> Result<Vec<Item>, ParseError> {
 }
 
 fn parse_expr_source(source: &str) -> Result<Expr, ParseError> {
-    let mut p = Parser::new(Lexer::create_tokens(source.to_string()));
+    let mut p = Parser::new(Lexer::create_tokens(source.to_string()).expect("lexing failed"));
     p.parse_expr()
 }
 
 fn parse_stmt_source(source: &str) -> Result<Stmt, ParseError> {
-    let mut p = Parser::new(Lexer::create_tokens(source.to_string()));
+    let mut p = Parser::new(Lexer::create_tokens(source.to_string()).expect("lexing failed"));
     p.parse_statement()
 }
 
 fn parse_items_source(source: &str) -> Result<Vec<Item>, ParseError> {
-    let mut p = Parser::new(Lexer::create_tokens(source.to_string()));
+    let mut p = Parser::new(Lexer::create_tokens(source.to_string()).expect("lexing failed"));
     p.parse()
 }
 
@@ -101,7 +101,7 @@ macro_rules! lexer_case {
     ($name:ident, $input:expr, $expected:expr) => {
         #[test]
         fn $name() {
-            let tokens = Lexer::create_tokens($input.to_string());
+            let tokens = Lexer::create_tokens($input.to_string()).expect("lexing failed");
             assert_eq!(tokens, $expected);
         }
     };
@@ -501,16 +501,15 @@ lexer_case!(lexer_colon, ":", vec![tk(TokenKind::Colon, ":"), eof()]);
 lexer_case!(lexer_dot, ".", vec![tk(TokenKind::Dot, "."), eof()]);
 
 #[test]
-#[should_panic(expected = "Lexing Error: Could not convert")]
 fn lexer_invalid_char_panics() {
-    let _ = Lexer::create_tokens("@".to_string());
+    assert!(Lexer::create_tokens("@".to_string()).is_err());
 }
 
 #[test]
 fn lexer_complex_program_tokenization() {
-    let tokens = Lexer::create_tokens(
-        "import a.b; fn add(x: int, y: int) int { return x + y; }".to_string(),
-    );
+    let tokens =
+        Lexer::create_tokens("import a.b; fn add(x: int, y: int) int { return x + y; }".to_string())
+            .expect("lexing failed");
     assert_eq!(
         tokens,
         vec![

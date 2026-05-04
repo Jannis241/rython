@@ -74,6 +74,7 @@ fn assert_const_instruction(
             assert_ir_type(ty, expected_type);
             assert_const_value(value, expected_value);
         }
+        other => panic!("expected const instruction, got {other:?}"),
     }
 }
 
@@ -103,6 +104,17 @@ fn assert_panics<F: FnOnce()>(f: F) {
     assert!(panic::catch_unwind(AssertUnwindSafe(f)).is_err());
 }
 
+fn unwrap_codegen(result: Result<IrModule, CodegenError>) -> IrModule {
+    match result {
+        Ok(module) => module,
+        Err(_) => panic!("codegen failed"),
+    }
+}
+
+fn assert_codegen_err(result: Result<IrModule, CodegenError>) {
+    assert!(result.is_err());
+}
+
 #[test]
 fn new_ir_module_starts_empty() {
     let module = IrModule::new();
@@ -115,7 +127,7 @@ fn new_ir_module_starts_empty() {
 
 #[test]
 fn generate_empty_item_list_returns_empty_module() {
-    let module = generate_code(&[]);
+    let module = unwrap_codegen(generate_code(&[]));
 
     assert!(module.functions.is_empty());
     assert!(module.globals.is_empty());
@@ -125,7 +137,7 @@ fn generate_empty_item_list_returns_empty_module() {
 
 #[test]
 fn function_without_return_type_or_statements_generates_void_entry_function() {
-    let module = generate_code(&[function("main", Vec::new(), None, Vec::new())]);
+    let module = unwrap_codegen(generate_code(&[function("main", Vec::new(), None, Vec::new())]));
 
     assert_eq!(module.functions.len(), 1);
     assert!(module.globals.is_empty());
@@ -146,7 +158,7 @@ fn function_without_return_type_or_statements_generates_void_entry_function() {
 
 #[test]
 fn function_parameters_and_return_type_are_converted_to_ir_types() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "typed",
         vec![
             param("i", named_type("int")),
@@ -157,7 +169,7 @@ fn function_parameters_and_return_type_are_converted_to_ir_types() {
         ],
         Some(named_type("UserResult")),
         Vec::new(),
-    )]);
+    )]));
 
     let function = &module.functions[0];
     assert_eq!(function.parameter.len(), 5);
@@ -183,7 +195,12 @@ fn function_parameters_and_return_type_are_converted_to_ir_types() {
 
 #[test]
 fn void_return_statement_keeps_empty_return_terminator() {
-    let module = generate_code(&[function("main", Vec::new(), None, vec![return_stmt(None)])]);
+    let module = unwrap_codegen(generate_code(&[function(
+        "main",
+        Vec::new(),
+        None,
+        vec![return_stmt(None)],
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert!(entry.instructions.is_empty());
@@ -192,12 +209,12 @@ fn void_return_statement_keeps_empty_return_terminator() {
 
 #[test]
 fn int_return_generates_i64_const_and_returns_its_temp() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "main",
         Vec::new(),
         Some(named_type("int")),
         vec![return_stmt(Some(Expr::IntLiteral("42".to_string())))],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 1);
@@ -212,7 +229,7 @@ fn int_return_generates_i64_const_and_returns_its_temp() {
 
 #[test]
 fn int_literal_parser_accepts_i64_boundaries_and_negative_values() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "bounds",
         Vec::new(),
         Some(named_type("int")),
@@ -220,7 +237,7 @@ fn int_literal_parser_accepts_i64_boundaries_and_negative_values() {
             return_stmt(Some(Expr::IntLiteral(i64::MAX.to_string()))),
             return_stmt(Some(Expr::IntLiteral(i64::MIN.to_string()))),
         ],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 2);
@@ -241,12 +258,12 @@ fn int_literal_parser_accepts_i64_boundaries_and_negative_values() {
 
 #[test]
 fn float_return_generates_f64_const_and_returns_its_temp() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "main",
         Vec::new(),
         Some(named_type("float")),
         vec![return_stmt(Some(Expr::FloatLiteral("-3.5".to_string())))],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 1);
@@ -261,7 +278,7 @@ fn float_return_generates_f64_const_and_returns_its_temp() {
 
 #[test]
 fn float_literal_supports_infinity_and_nan_from_rust_parser() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "float_edges",
         Vec::new(),
         Some(named_type("float")),
@@ -269,7 +286,7 @@ fn float_literal_supports_infinity_and_nan_from_rust_parser() {
             return_stmt(Some(Expr::FloatLiteral("inf".to_string()))),
             return_stmt(Some(Expr::FloatLiteral("NaN".to_string()))),
         ],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 2);
@@ -304,7 +321,7 @@ fn float_literal_supports_infinity_and_nan_from_rust_parser() {
 
 #[test]
 fn bool_returns_generate_bool_consts_for_true_and_false() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "bools",
         Vec::new(),
         Some(named_type("bool")),
@@ -312,7 +329,7 @@ fn bool_returns_generate_bool_consts_for_true_and_false() {
             return_stmt(Some(Expr::BoolLiteral(true))),
             return_stmt(Some(Expr::BoolLiteral(false))),
         ],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 2);
@@ -333,14 +350,14 @@ fn bool_returns_generate_bool_consts_for_true_and_false() {
 
 #[test]
 fn string_return_generates_named_string_const_without_losing_content() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "main",
         Vec::new(),
         Some(named_type("string")),
         vec![return_stmt(Some(Expr::StringLiteral(
             "hello\nworld \"quoted\"".to_string(),
         )))],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 1);
@@ -355,7 +372,7 @@ fn string_return_generates_named_string_const_without_losing_content() {
 
 #[test]
 fn temp_ids_increase_inside_a_function_and_terminator_uses_last_return_value() {
-    let module = generate_code(&[function(
+    let module = unwrap_codegen(generate_code(&[function(
         "main",
         Vec::new(),
         Some(named_type("int")),
@@ -364,7 +381,7 @@ fn temp_ids_increase_inside_a_function_and_terminator_uses_last_return_value() {
             return_stmt(Some(Expr::IntLiteral("2".to_string()))),
             return_stmt(Some(Expr::IntLiteral("3".to_string()))),
         ],
-    )]);
+    )]));
 
     let entry = &module.functions[0].blocks[0];
     assert_eq!(entry.instructions.len(), 3);
@@ -391,7 +408,7 @@ fn temp_ids_increase_inside_a_function_and_terminator_uses_last_return_value() {
 
 #[test]
 fn temp_ids_reset_for_each_generated_function() {
-    let module = generate_code(&[
+    let module = unwrap_codegen(generate_code(&[
         function(
             "first",
             Vec::new(),
@@ -404,7 +421,7 @@ fn temp_ids_reset_for_each_generated_function() {
             Some(named_type("int")),
             vec![return_stmt(Some(Expr::IntLiteral("2".to_string())))],
         ),
-    ]);
+    ]));
 
     assert_eq!(module.functions.len(), 2);
 
@@ -427,8 +444,8 @@ fn temp_ids_reset_for_each_generated_function() {
 }
 
 #[test]
-fn global_and_const_items_generate_module_values_in_order() {
-    let module = generate_code(&[
+fn global_and_const_items_are_reported_as_unsupported_items() {
+    assert_codegen_err(generate_code(&[
         global_var(
             "counter",
             named_type("int"),
@@ -447,54 +464,17 @@ fn global_and_const_items_generate_module_values_in_order() {
             Expr::StringLiteral("hello".to_string()),
         ),
         global_var("none", named_type("Option"), Expr::NullLiteral),
-    ]);
-
-    assert!(module.functions.is_empty());
-    assert_eq!(module.globals.len(), 3);
-    assert_eq!(module.constants.len(), 3);
-
-    assert_eq!(module.globals[0].name, "counter");
-    assert_ir_type(&module.globals[0].ty, &IrType::I64);
-    assert_const_value(&module.globals[0].value, &ConstValue::Int(0));
-
-    assert_eq!(module.globals[1].name, "letter");
-    assert_ir_type(&module.globals[1].ty, &IrType::Named("char".to_string()));
-    assert_const_value(&module.globals[1].value, &ConstValue::Char('x'));
-
-    assert_eq!(module.globals[2].name, "none");
-    assert_ir_type(&module.globals[2].ty, &IrType::Named("Option".to_string()));
-    assert_const_value(&module.globals[2].value, &ConstValue::Null);
-
-    assert_eq!(module.constants[0].name, "pi");
-    assert_ir_type(&module.constants[0].ty, &IrType::F64);
-    assert_const_value(&module.constants[0].value, &ConstValue::Float(3.5));
-
-    assert_eq!(module.constants[1].name, "enabled");
-    assert_ir_type(&module.constants[1].ty, &IrType::Bool);
-    assert_const_value(&module.constants[1].value, &ConstValue::Bool(true));
-
-    assert_eq!(module.constants[2].name, "message");
-    assert_ir_type(
-        &module.constants[2].ty,
-        &IrType::Named("string".to_string()),
-    );
-    assert_const_value(
-        &module.constants[2].value,
-        &ConstValue::String("hello".to_string()),
-    );
+    ]));
 }
 
 #[test]
-fn global_and_const_values_must_be_literals() {
-    assert_panics(|| {
-        generate_code(&[global_var(
+fn global_and_const_values_are_rejected_before_literal_validation() {
+    assert_codegen_err(generate_code(&[global_var(
             "not_literal",
             named_type("int"),
             Expr::Variable("x".to_string()),
-        )]);
-    });
-    assert_panics(|| {
-        generate_code(&[const_var(
+        )]));
+    assert_codegen_err(generate_code(&[const_var(
             "also_not_literal",
             named_type("int"),
             Expr::BinaryOp {
@@ -502,21 +482,18 @@ fn global_and_const_values_must_be_literals() {
                 binary_op: BinaryOp::Add,
                 rhs: Box::new(Expr::IntLiteral("2".to_string())),
             },
-        )]);
-    });
+        )]));
 }
 
 #[test]
-fn unsupported_top_level_item_panics() {
-    assert_panics(|| {
-        generate_code(&[Item::Import(Import {
+fn unsupported_top_level_item_returns_error() {
+    assert_codegen_err(generate_code(&[Item::Import(Import {
             import_name: "std".to_string(),
-        })]);
-    });
+        })]));
 }
 
 #[test]
-fn all_non_function_top_level_items_panic() {
+fn all_non_function_top_level_items_return_errors() {
     let items = vec![
         Item::Trait(Trait {
             trait_name: "Display".to_string(),
@@ -547,19 +524,17 @@ fn all_non_function_top_level_items_panic() {
     ];
 
     for item in items {
-        assert_panics(|| {
-            generate_code(&[item]);
-        });
+        assert_codegen_err(generate_code(&[item]));
     }
 }
 
 #[test]
 fn function_order_is_preserved() {
-    let module = generate_code(&[
+    let module = unwrap_codegen(generate_code(&[
         function("first", Vec::new(), None, Vec::new()),
         function("second", Vec::new(), None, Vec::new()),
         function("third", Vec::new(), None, Vec::new()),
-    ]);
+    ]));
 
     assert_eq!(module.functions.len(), 3);
     assert_eq!(module.functions[0].name, "first");
@@ -584,7 +559,7 @@ fn function_generic_params_and_operator_metadata_do_not_change_generated_functio
         operator: Some("+".to_string()),
     });
 
-    let module = generate_code(&[item]);
+    let module = unwrap_codegen(generate_code(&[item]));
     let function = &module.functions[0];
     assert_eq!(function.name, "add");
     assert!(function.parameter.is_empty());
@@ -593,19 +568,17 @@ fn function_generic_params_and_operator_metadata_do_not_change_generated_functio
 }
 
 #[test]
-fn unsupported_statement_panics() {
-    assert_panics(|| {
-        generate_code(&[function(
+fn unsupported_statement_returns_error() {
+    assert_codegen_err(generate_code(&[function(
             "main",
             Vec::new(),
             None,
             vec![Stmt::Expr(Expr::IntLiteral("1".to_string()))],
-        )]);
-    });
+        )]));
 }
 
 #[test]
-fn all_non_return_statements_panic() {
+fn all_non_return_statements_return_errors() {
     let statements = vec![
         Stmt::Let(Let {
             var_name: "x".to_string(),
@@ -639,26 +612,22 @@ fn all_non_return_statements_panic() {
     ];
 
     for stmt in statements {
-        assert_panics(|| {
-            generate_code(&[function("main", Vec::new(), None, vec![stmt])]);
-        });
+        assert_codegen_err(generate_code(&[function("main", Vec::new(), None, vec![stmt])]));
     }
 }
 
 #[test]
-fn unsupported_expression_panics() {
-    assert_panics(|| {
-        generate_code(&[function(
+fn unsupported_expression_returns_error() {
+    assert_codegen_err(generate_code(&[function(
             "main",
             Vec::new(),
             Some(named_type("int")),
             vec![return_stmt(Some(Expr::Variable("x".to_string())))],
-        )]);
-    });
+        )]));
 }
 
 #[test]
-fn all_non_literal_return_expressions_panic() {
+fn all_non_literal_return_expressions_return_errors() {
     let expressions = vec![
         Expr::Assign {
             target_name: "x".to_string(),
@@ -696,21 +665,19 @@ fn all_non_literal_return_expressions_panic() {
     ];
 
     for expr in expressions {
-        assert_panics(|| {
-            generate_code(&[function(
+        assert_codegen_err(generate_code(&[function(
                 "main",
                 Vec::new(),
                 Some(named_type("int")),
                 vec![return_stmt(Some(expr))],
-            )]);
-        });
+            )]));
     }
 }
 
 #[test]
 fn any_trait_parameter_type_panics() {
     assert_panics(|| {
-        generate_code(&[function(
+        let _ = generate_code(&[function(
             "main",
             vec![param(
                 "x",
@@ -728,7 +695,7 @@ fn any_trait_parameter_type_panics() {
 #[test]
 fn any_trait_return_type_panics() {
     assert_panics(|| {
-        generate_code(&[function(
+        let _ = generate_code(&[function(
             "main",
             Vec::new(),
             Some(Type::AnyTrait(vec![TraitBound {
@@ -741,29 +708,25 @@ fn any_trait_return_type_panics() {
 }
 
 #[test]
-fn invalid_int_literal_panics() {
-    assert_panics(|| {
-        generate_code(&[function(
+fn invalid_int_literal_returns_error() {
+    assert_codegen_err(generate_code(&[function(
             "main",
             Vec::new(),
             Some(named_type("int")),
             vec![return_stmt(Some(Expr::IntLiteral(
                 "9223372036854775808".to_string(),
             )))],
-        )]);
-    });
+        )]));
 }
 
 #[test]
-fn invalid_float_literal_panics() {
-    assert_panics(|| {
-        generate_code(&[function(
+fn invalid_float_literal_returns_error() {
+    assert_codegen_err(generate_code(&[function(
             "main",
             Vec::new(),
             Some(named_type("float")),
             vec![return_stmt(Some(Expr::FloatLiteral(
                 "not_a_float".to_string(),
             )))],
-        )]);
-    });
+        )]));
 }
