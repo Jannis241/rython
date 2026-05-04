@@ -17,17 +17,18 @@ fn main() {
     // let filename = args[1].as_str();
     //
     // manager::run::run(filename);
-    // let items = vec![Item::Function(Function {
-    //     name: "main".to_string(),
-    //     generic_params: vec![],
-    //     params: vec![],
-    //     return_type: Some(Type::Named("i64".to_string())),
-    //     body: Block {
-    //         statements: vec![Stmt::Return(Return {
-    //             return_value: Some(Expr::IntLiteral("42".to_string())),
-    //         })],
-    //     },
-    // })];
-    // let ir = codegen::generate_code(&items);
-    // println!("Generated IR Code: \n \n \n {}", ir);
+    let items = vec![Item::Function(Function {
+        name: "main".to_string(),
+        operator: None,
+        generic_params: vec![],
+        params: vec![Param {name: "test".to_string(), param_type: Type::Named("int".to_string())}],
+        return_type: Some(Type::Named("int".to_string())),
+        body: Block {
+            statements: vec![Stmt::Return(Return {
+                return_value: Some(Expr::IntLiteral("42".to_string())),
+            })],
+        },
+    })];
+    let ir = codegen::generate_code(&items);
+    println!("IR Module: {:?}", ir);
 }

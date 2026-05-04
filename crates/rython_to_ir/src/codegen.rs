@@ -3,6 +3,7 @@ use std::fmt::Write;
 use crate::{ast::{Expr, Function, Item, Stmt, Type}, lexer::Token};
 
 // Module hält alle ober Items also alles was in der oberen ebene im file stehen könnte
+#[derive(Debug,Clone)]
 pub struct IrModule {
     pub functions: Vec<IrFunction>,
     // Todo: weitere dinge wie globale variablen, imports, traits etc
@@ -13,6 +14,7 @@ impl IrModule {
     }
 }
 
+#[derive(Debug,Clone)]
 pub struct IrFunction {
     pub name: String,
     pub parameter: Vec<IrParameter>,
@@ -20,17 +22,20 @@ pub struct IrFunction {
     pub blocks: Vec<IrBlock>
 }
 
+#[derive(Debug,Clone)]
 pub struct IrParameter {
     pub name: String,
     pub param_type: IrType,
 }
 
+#[derive(Debug,Clone)]
 pub struct IrBlock {
     pub label: String, // z.B entry:
     pub instructions: Vec<IrInstruction>,
     pub terminator: Terminator,
 }
 
+#[derive(Debug,Clone)]
 pub enum IrInstruction {
     Const {
         temp_id: TempId,
@@ -39,8 +44,10 @@ pub enum IrInstruction {
     }
 }
 
+#[derive(Clone,Debug, Copy)]
 pub struct TempId(usize);
 
+#[derive(Debug,Clone)]
 pub enum ConstValue {
       Int(i64),
       Float(f64),
@@ -51,10 +58,12 @@ pub enum ConstValue {
 }
 
 
+#[derive(Debug,Clone)]
 pub enum Terminator {
     ret(Option<TempId>) // entweder zb ret %tmp0 bei Some(id) oder ret void bei None
 }
 
+#[derive(Debug,Clone)]
 pub enum IrType {
     I64,
     Bool,
@@ -65,6 +74,7 @@ pub enum IrType {
 }
 
 
+#[derive(Debug,Clone,Copy)]
 pub struct IrGenerator {
     temp_counter: usize,
 
@@ -104,10 +114,92 @@ impl IrGenerator {
                 param_type: Self::convert_to_ir_type(&param.param_type),
             }).collect(),
             return_type: function.return_type.as_ref().map(Self::convert_to_ir_type).unwrap_or(IrType::Void),
-            blocks: vec![entry_block],
+            blocks: vec![entry_block], // Todo: mehrere blöcke ??
         }
     }
     fn gen_stmt(&mut self, stmt: &Stmt, block: &mut IrBlock) {
+        match stmt {
+            Stmt::Return(ret) => {
+                let return_value = ret.return_value.as_ref();
+                // --> option <expr> entweder returnt es void oder eine expr
+
+                match return_value {
+                    Some(value) => {
+                        let temp_id = self.gen_expr(value, block); // Expr handeln -> macht sein eigenes Ding und
+                        // editiert die instructions des blocks. Return gibt nicht das ergebnis der
+                        // expr selber zurück sondern nur die variable also brauchen wir die temp id
+                        block.terminator = Terminator::ret(Some(temp_id));
+
+                    }
+                    // Eigentlich unnötig, da block.terminator by default schon None ist aber egal
+                    None => {
+                        block.terminator = Terminator::ret(None);
+                    }
+                }
+
+
+            }
+             _ => {panic!()}
+        }
+    }
+
+    // Methode wird aufgerufen falls man eine temp id belegen will -> aktuell freie temp id struct
+    // wird erstellt und returnt und der counter wird um 1 erhöht damit dieser wieder bei der nächst
+    // freien temp id ist
+    fn next_temp_id(&mut self) -> TempId {
+        let id = TempId(self.temp_counter);
+        self.temp_counter += 1;
+        return id;
+    }
+
+    fn gen_expr(&mut self, expr: &Expr, block: &mut IrBlock) -> TempId {
+        // Expr handeln: Instructions in dem Block je nach expression verändern und die temp id
+        // zurück geben wo das ergebnis der expr genau gespeichert wird, damit aufrufende methoden
+        // das nutzen können (wie zb return)
+        match expr {
+
+            Expr::IntLiteral(value) => {
+                let temp_id = self.next_temp_id();
+
+                let new_const_instruction = IrInstruction::Const { temp_id: temp_id, ty: IrType::I64, value: ConstValue::Int(value.parse().expect("Invalid int literal")) };
+
+                block.instructions.push(new_const_instruction);
+
+                temp_id
+
+            }
+            Expr::FloatLiteral(value) => {
+                let temp_id = self.next_temp_id();
+
+                let new_const_instruction = IrInstruction::Const { temp_id: temp_id, ty: IrType::F64, value: ConstValue::Float(value.parse().expect("Invalid float literal")) };
+
+                block.instructions.push(new_const_instruction);
+
+                temp_id
+
+            }
+            Expr::BoolLiteral(value) => {
+                let temp_id = self.next_temp_id();
+
+                let new_const_instruction = IrInstruction::Const { temp_id: temp_id, ty: IrType::Bool, value: ConstValue::Bool(*value) };
+
+                block.instructions.push(new_const_instruction);
+
+                temp_id
+
+            }
+            Expr::StringLiteral(value) => {
+                let temp_id = self.next_temp_id();
+
+                let new_const_instruction = IrInstruction::Const { temp_id: temp_id, ty: IrType::Named("string".to_string()), value: ConstValue::String(value.clone()) };
+
+                block.instructions.push(new_const_instruction);
+
+                temp_id
+
+            }
+            _ => {panic!("not implemented expr in code gen")}
+        }
 
     }
 
