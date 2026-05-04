@@ -343,8 +343,7 @@ impl Parser {
             }
             TokenKind::Char => {
                 self.advance()?;
-                let current = self.current()?;
-                let char_str = current.value;
+                let char_str = curr.value;
 
                 assert_eq!(char_str.len(), 1);
                 let chars = char_str.chars().collect::<Vec<char>>();
@@ -625,6 +624,52 @@ impl Parser {
 
         self.ast.push(Item::Import(Import {
             import_name: whole_path,
+        }));
+        Ok(())
+    }
+
+    fn parse_global_var(&mut self) -> Result<(), ParseError> {
+        self.expect_current(TokenKind::Global)?;
+        self.advance()?;
+        self.expect_current(TokenKind::Ident)?;
+        let var_name = self.current()?.value;
+        self.advance()?;
+        self.expect_current(TokenKind::Colon)?;
+        self.advance()?;
+        let var_type = self.parse_type()?;
+        self.expect_current(TokenKind::Eq)?;
+        self.advance()?;
+        let value = self.parse_expr()?;
+        self.expect_current(TokenKind::Semicolon)?;
+        self.advance()?;
+
+        self.ast.push(Item::GlobalVar(GlobalVar {
+            var_name,
+            var_type,
+            value,
+        }));
+        Ok(())
+    }
+
+    fn parse_const_var(&mut self) -> Result<(), ParseError> {
+        self.expect_current(TokenKind::Const)?;
+        self.advance()?;
+        self.expect_current(TokenKind::Ident)?;
+        let var_name = self.current()?.value;
+        self.advance()?;
+        self.expect_current(TokenKind::Colon)?;
+        self.advance()?;
+        let var_type = self.parse_type()?;
+        self.expect_current(TokenKind::Eq)?;
+        self.advance()?;
+        let value = self.parse_expr()?;
+        self.expect_current(TokenKind::Semicolon)?;
+        self.advance()?;
+
+        self.ast.push(Item::ConstVar(ConstVar {
+            var_name,
+            var_type,
+            value,
         }));
         Ok(())
     }
@@ -1050,57 +1095,6 @@ impl Parser {
         Ok(stmt)
     }
 
-    pub fn parse_global(&mut self) -> Result<(), ParseError> {
-        self.expect_current(TokenKind::Global)?;
-        self.advance()?;
-        self.expect_current(TokenKind::Ident)?;
-        let name = self.current()?.value;
-        self.advance()?;
-        self.expect_current(TokenKind::Colon)?;
-        self.advance()?;
-        self.expect_current(TokenKind::Ident)?;
-        let typ = self.parse_type()?;
-        self.expect_current(TokenKind::Eq)?;
-        self.advance()?;
-        let value = self.parse_expr()?;
-        self.advance()?;
-        self.expect_current(TokenKind::Semicolon)?;
-        self.advance()?;
-
-        self.ast.push(Item::GlobalVar(GlobalVar {
-            var_name: name,
-            var_type: typ,
-            value,
-        }));
-
-        Ok(())
-    }
-    pub fn parse_const(&mut self) -> Result<(), ParseError> {
-        self.expect_current(TokenKind::Const)?;
-        self.advance()?;
-        self.expect_current(TokenKind::Ident)?;
-        let name = self.current()?.value;
-        self.advance()?;
-        self.expect_current(TokenKind::Colon)?;
-        self.advance()?;
-        self.expect_current(TokenKind::Ident)?;
-        let typ = self.parse_type()?;
-        self.expect_current(TokenKind::Eq)?;
-        self.advance()?;
-        let value = self.parse_expr()?;
-        self.advance()?;
-        self.expect_current(TokenKind::Semicolon)?;
-        self.advance()?;
-
-        self.ast.push(Item::ConstVar(ConstVar {
-            var_name: name,
-            var_type: typ,
-            value,
-        }));
-
-        Ok(())
-    }
-
     pub fn parse(&mut self) -> Result<Vec<Item>, ParseError> {
         loop {
             if self.current_idx >= self.tokens.len() {
@@ -1110,12 +1104,12 @@ impl Parser {
             match self.current()?.kind {
                 TokenKind::Trait => self.parse_trait()?,
                 TokenKind::Import => self.parse_import()?,
+                TokenKind::Global => self.parse_global_var()?,
+                TokenKind::Const => self.parse_const_var()?,
                 TokenKind::Variant => self.parse_variant()?,
                 TokenKind::Struct => self.parse_struct()?,
                 TokenKind::Fn => self.parse_fn()?,
                 TokenKind::Impl => self.parse_trait_implementation()?,
-                TokenKind::Global => self.parse_global()?,
-                TokenKind::Const => self.parse_const()?,
                 TokenKind::Eof => break,
                 TokenKind::Semicolon => self.advance()?,
                 other => return Err(ParseError::UnexpectedTopLevel(other)),

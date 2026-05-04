@@ -278,6 +278,16 @@ lexer_case!(
     vec![tk(TokenKind::Trait, "trait"), eof()]
 );
 lexer_case!(
+    lexer_keyword_global,
+    "global",
+    vec![tk(TokenKind::Global, "global"), eof()]
+);
+lexer_case!(
+    lexer_keyword_const,
+    "const",
+    vec![tk(TokenKind::Const, "const"), eof()]
+);
+lexer_case!(
     lexer_keyword_impl,
     "impl",
     vec![tk(TokenKind::Impl, "impl"), eof()]
@@ -326,10 +336,12 @@ lexer_case!(
 );
 lexer_case!(
     lexer_ident_respects_keywords_only_exact_match,
-    "truex falsey operator2",
+    "truex falsey global_value const2 operator2",
     vec![
         tk(TokenKind::Ident, "truex"),
         tk(TokenKind::Ident, "falsey"),
+        tk(TokenKind::Ident, "global_value"),
+        tk(TokenKind::Ident, "const2"),
         tk(TokenKind::Ident, "operator2"),
         eof()
     ]
@@ -349,7 +361,12 @@ lexer_case!(
 lexer_case!(
     lexer_float_multiple_dots,
     "1.2.3",
-    vec![tk(TokenKind::Float, "1.2.3"), eof()]
+    vec![
+        tk(TokenKind::Float, "1.2"),
+        tk(TokenKind::Dot, "."),
+        tk(TokenKind::Int, "3"),
+        eof()
+    ]
 );
 lexer_case!(
     lexer_float_trailing_dot,
@@ -642,10 +659,13 @@ expr_case!(
         })
     }
 );
-error_case_expr!(
-    expr_bang_is_not_parsed_as_unary_not_yet,
+expr_case!(
+    expr_unary_not,
     vec![tk(TokenKind::Bang, "!"), tk(TokenKind::True, "true")],
-    |err| assert_unexpected_expr_start(err, TokenKind::Bang)
+    Expr::Unary {
+        op: UnaryOp::Not,
+        value: Box::new(Expr::BoolLiteral(true))
+    }
 );
 
 expr_case!(
@@ -1095,15 +1115,15 @@ expr_case!(
     }
 );
 
-error_case_expr!(
-    expr_unexpected_start_char,
+expr_case!(
+    expr_char_literal,
     vec![tk(TokenKind::Char, "x")],
-    |err| assert_unexpected_expr_start(err, TokenKind::Char)
+    Expr::CharLiteral('x')
 );
-error_case_expr!(
-    expr_unexpected_start_null,
+expr_case!(
+    expr_null_literal,
     vec![tk(TokenKind::Null, "null")],
-    |err| assert_unexpected_expr_start(err, TokenKind::Null)
+    Expr::NullLiteral
 );
 error_case_expr!(
     expr_trailing_comma_in_list_is_rejected,
@@ -1540,14 +1560,16 @@ error_case_stmt!(
     ],
     |err| assert_unexpected_token(err, TokenKind::LParen, TokenKind::StringLiteral, 1)
 );
-error_case_stmt!(
-    stmt_return_char_literal_is_not_expression_yet,
+stmt_case!(
+    stmt_return_char_literal,
     vec![
         tk(TokenKind::Return, "return"),
         tk(TokenKind::Char, "x"),
         tk(TokenKind::Semicolon, ";")
     ],
-    |err| assert_unexpected_expr_start(err, TokenKind::Char)
+    Stmt::Return(Return {
+        return_value: Some(Expr::CharLiteral('x'))
+    })
 );
 
 // TOP-LEVEL ITEM TESTS
@@ -1576,6 +1598,63 @@ item_case!(
     vec![Item::Import(Import {
         import_name: "foo.bar.baz".into()
     })]
+);
+item_case!(
+    item_global_var,
+    vec![
+        tk(TokenKind::Global, "global"),
+        tk(TokenKind::Ident, "counter"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "int"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "0"),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    vec![Item::GlobalVar(GlobalVar {
+        var_name: "counter".into(),
+        var_type: Type::Named("int".into()),
+        value: Expr::IntLiteral("0".into())
+    })]
+);
+item_case!(
+    item_const_var,
+    vec![
+        tk(TokenKind::Const, "const"),
+        tk(TokenKind::Ident, "answer"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "int"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "42"),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    vec![Item::ConstVar(ConstVar {
+        var_name: "answer".into(),
+        var_type: Type::Named("int".into()),
+        value: Expr::IntLiteral("42".into())
+    })]
+);
+error_case_items!(
+    item_global_missing_initializer,
+    vec![
+        tk(TokenKind::Global, "global"),
+        tk(TokenKind::Ident, "counter"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "int"),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::Eq, TokenKind::Semicolon, 4)
+);
+error_case_items!(
+    item_const_missing_semicolon,
+    vec![
+        tk(TokenKind::Const, "const"),
+        tk(TokenKind::Ident, "answer"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "int"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "42")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::Semicolon, TokenKind::Eof, 6)
 );
 item_case!(
     item_variant_empty,
@@ -2210,15 +2289,26 @@ fn source_expr_parses_through_lexer_and_parser() {
 }
 
 #[test]
-fn source_expr_bang_reaches_parser_but_is_not_unary_not_yet() {
-    let err = parse_expr_source("!true").unwrap_err();
-    assert_unexpected_expr_start(err, TokenKind::Bang);
+fn source_expr_bang_parses_as_unary_not() {
+    let expr = parse_expr_source("!true").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Unary {
+            op: UnaryOp::Not,
+            value: Box::new(Expr::BoolLiteral(true)),
+        },
+    );
 }
 
 #[test]
-fn source_stmt_parses_char_token_then_rejects_it_as_expr() {
-    let err = parse_stmt_source("return 'x';").unwrap_err();
-    assert_unexpected_expr_start(err, TokenKind::Char);
+fn source_stmt_parses_char_literal_return() {
+    let stmt = parse_stmt_source("return 'x';").unwrap();
+    dbg_eq(
+        stmt,
+        Stmt::Return(Return {
+            return_value: Some(Expr::CharLiteral('x')),
+        }),
+    );
 }
 
 #[test]
@@ -2226,6 +2316,8 @@ fn source_items_parse_full_program_shape() {
     let items = parse_items_source(
         r#"
         import std.io;
+        global counter: int = 0;
+        const answer: int = 42;
         variant Option { Some, None, }
         struct Point<T> { x: int, y: int, }
         trait Display { fn show(self: Self) string; }
@@ -2234,7 +2326,7 @@ fn source_items_parse_full_program_shape() {
     )
     .unwrap();
 
-    assert_eq!(items.len(), 5);
+    assert_eq!(items.len(), 7);
     dbg_eq(
         &items[0],
         &Item::Import(Import {
@@ -2243,12 +2335,28 @@ fn source_items_parse_full_program_shape() {
     );
     dbg_eq(
         &items[1],
+        &Item::GlobalVar(GlobalVar {
+            var_name: "counter".into(),
+            var_type: Type::Named("int".into()),
+            value: Expr::IntLiteral("0".into()),
+        }),
+    );
+    dbg_eq(
+        &items[2],
+        &Item::ConstVar(ConstVar {
+            var_name: "answer".into(),
+            var_type: Type::Named("int".into()),
+            value: Expr::IntLiteral("42".into()),
+        }),
+    );
+    dbg_eq(
+        &items[3],
         &Item::Variant(Variant {
             variant_name: "Option".into(),
             cases: vec!["Some".into(), "None".into()],
         }),
     );
-    match &items[4] {
+    match &items[6] {
         Item::Function(function) => {
             assert_eq!(function.name, "main");
             assert_eq!(function.body.statements.len(), 2);
@@ -2258,28 +2366,22 @@ fn source_items_parse_full_program_shape() {
 }
 
 #[test]
-fn ast_global_and_const_items_are_constructible_even_if_parser_does_not_emit_them_yet() {
-    let global = Item::GlobalVar(GlobalVar {
-        var_name: "counter".into(),
-        var_type: Type::Named("int".into()),
-        value: Expr::IntLiteral("0".into()),
-    });
-    let constant = Item::ConstVar(ConstVar {
-        var_name: "answer".into(),
-        var_type: Type::Named("int".into()),
-        value: Expr::IntLiteral("42".into()),
-    });
+fn source_items_parse_global_and_const_declarations() {
+    let items = parse_items_source("global counter: int = 0; const answer: int = 42;").unwrap();
 
-    assert!(format!("{global:?}").contains("GlobalVar"));
-    assert!(format!("{constant:?}").contains("ConstVar"));
-}
-
-#[test]
-fn ast_unary_not_variant_is_constructible_even_if_parser_does_not_emit_it_yet() {
-    let expr = Expr::Unary {
-        op: UnaryOp::Not,
-        value: Box::new(Expr::BoolLiteral(true)),
-    };
-
-    assert!(format!("{expr:?}").contains("Not"));
+    dbg_eq(
+        items,
+        vec![
+            Item::GlobalVar(GlobalVar {
+                var_name: "counter".into(),
+                var_type: Type::Named("int".into()),
+                value: Expr::IntLiteral("0".into()),
+            }),
+            Item::ConstVar(ConstVar {
+                var_name: "answer".into(),
+                var_type: Type::Named("int".into()),
+                value: Expr::IntLiteral("42".into()),
+            }),
+        ],
+    );
 }

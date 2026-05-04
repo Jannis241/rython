@@ -60,7 +60,7 @@ fn hash_comments_are_not_supported() {
 #[test]
 fn lexes_all_keywords() {
     assert_tokens(
-        "true false char null if else return loop while any let fn this in import struct trait impl for continue break variant and or operator asm",
+        "true false char null if else return loop while any let fn this in import struct trait global const impl for continue break variant and or operator asm",
         &[
             (TokenKind::True, "true"),
             (TokenKind::False, "false"),
@@ -79,6 +79,8 @@ fn lexes_all_keywords() {
             (TokenKind::Import, "import"),
             (TokenKind::Struct, "struct"),
             (TokenKind::Trait, "trait"),
+            (TokenKind::Global, "global"),
+            (TokenKind::Const, "const"),
             (TokenKind::Impl, "impl"),
             (TokenKind::For, "for"),
             (TokenKind::Continue, "continue"),
@@ -96,7 +98,7 @@ fn lexes_all_keywords() {
 #[test]
 fn keywords_are_case_sensitive() {
     assert_tokens(
-        "True FALSE Char Null If ELSE Return ASM",
+        "True FALSE Char Null If ELSE Return Global CONST ASM",
         &[
             (TokenKind::Ident, "True"),
             (TokenKind::Ident, "FALSE"),
@@ -105,6 +107,8 @@ fn keywords_are_case_sensitive() {
             (TokenKind::Ident, "If"),
             (TokenKind::Ident, "ELSE"),
             (TokenKind::Ident, "Return"),
+            (TokenKind::Ident, "Global"),
+            (TokenKind::Ident, "CONST"),
             (TokenKind::Ident, "ASM"),
             (TokenKind::Eof, "EOF"),
         ],
@@ -114,7 +118,7 @@ fn keywords_are_case_sensitive() {
 #[test]
 fn keyword_prefixes_and_suffixes_are_identifiers() {
     assert_tokens(
-        "truex xtrue null_value ifx xif let_value fn2 operator_overload",
+        "truex xtrue null_value ifx xif let_value fn2 global_value const2 xglobal xconst operator_overload",
         &[
             (TokenKind::Ident, "truex"),
             (TokenKind::Ident, "xtrue"),
@@ -123,6 +127,10 @@ fn keyword_prefixes_and_suffixes_are_identifiers() {
             (TokenKind::Ident, "xif"),
             (TokenKind::Ident, "let_value"),
             (TokenKind::Ident, "fn2"),
+            (TokenKind::Ident, "global_value"),
+            (TokenKind::Ident, "const2"),
+            (TokenKind::Ident, "xglobal"),
+            (TokenKind::Ident, "xconst"),
             (TokenKind::Ident, "operator_overload"),
             (TokenKind::Eof, "EOF"),
         ],
@@ -178,22 +186,30 @@ fn lexes_float_literals() {
 }
 
 #[test]
-fn keeps_multiple_dots_inside_number_literal() {
+fn stops_float_literal_before_second_dot() {
     assert_tokens(
         "1.2.3",
-        &[(TokenKind::Float, "1.2.3"), (TokenKind::Eof, "EOF")],
+        &[
+            (TokenKind::Float, "1.2"),
+            (TokenKind::Dot, "."),
+            (TokenKind::Int, "3"),
+            (TokenKind::Eof, "EOF"),
+        ],
     );
 }
 
 #[test]
-fn keeps_dot_sequences_inside_number_literal() {
+fn stops_float_literal_after_first_dot_in_dot_sequences() {
     assert_tokens(
         "0..1 1.foo 1..",
         &[
-            (TokenKind::Float, "0..1"),
+            (TokenKind::Float, "0."),
+            (TokenKind::Dot, "."),
+            (TokenKind::Int, "1"),
             (TokenKind::Float, "1."),
             (TokenKind::Ident, "foo"),
-            (TokenKind::Float, "1.."),
+            (TokenKind::Float, "1."),
+            (TokenKind::Dot, "."),
             (TokenKind::Eof, "EOF"),
         ],
     );

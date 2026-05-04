@@ -38,6 +38,22 @@ fn param(name: &str, param_type: Type) -> Param {
     }
 }
 
+fn global_var(name: &str, ty: Type, value: Expr) -> Item {
+    Item::GlobalVar(GlobalVar {
+        var_name: name.to_string(),
+        var_type: ty,
+        value,
+    })
+}
+
+fn const_var(name: &str, ty: Type, value: Expr) -> Item {
+    Item::ConstVar(ConstVar {
+        var_name: name.to_string(),
+        var_type: ty,
+        value,
+    })
+}
+
 fn temp_debug(temp_id: &TempId) -> String {
     format!("{temp_id:?}")
 }
@@ -411,6 +427,86 @@ fn temp_ids_reset_for_each_generated_function() {
 }
 
 #[test]
+fn global_and_const_items_generate_module_values_in_order() {
+    let module = generate_code(&[
+        global_var(
+            "counter",
+            named_type("int"),
+            Expr::IntLiteral("0".to_string()),
+        ),
+        const_var(
+            "pi",
+            named_type("float"),
+            Expr::FloatLiteral("3.5".to_string()),
+        ),
+        const_var("enabled", named_type("bool"), Expr::BoolLiteral(true)),
+        global_var("letter", named_type("char"), Expr::CharLiteral('x')),
+        const_var(
+            "message",
+            named_type("string"),
+            Expr::StringLiteral("hello".to_string()),
+        ),
+        global_var("none", named_type("Option"), Expr::NullLiteral),
+    ]);
+
+    assert!(module.functions.is_empty());
+    assert_eq!(module.globals.len(), 3);
+    assert_eq!(module.constants.len(), 3);
+
+    assert_eq!(module.globals[0].name, "counter");
+    assert_ir_type(&module.globals[0].ty, &IrType::I64);
+    assert_const_value(&module.globals[0].value, &ConstValue::Int(0));
+
+    assert_eq!(module.globals[1].name, "letter");
+    assert_ir_type(&module.globals[1].ty, &IrType::Named("char".to_string()));
+    assert_const_value(&module.globals[1].value, &ConstValue::Char('x'));
+
+    assert_eq!(module.globals[2].name, "none");
+    assert_ir_type(&module.globals[2].ty, &IrType::Named("Option".to_string()));
+    assert_const_value(&module.globals[2].value, &ConstValue::Null);
+
+    assert_eq!(module.constants[0].name, "pi");
+    assert_ir_type(&module.constants[0].ty, &IrType::F64);
+    assert_const_value(&module.constants[0].value, &ConstValue::Float(3.5));
+
+    assert_eq!(module.constants[1].name, "enabled");
+    assert_ir_type(&module.constants[1].ty, &IrType::Bool);
+    assert_const_value(&module.constants[1].value, &ConstValue::Bool(true));
+
+    assert_eq!(module.constants[2].name, "message");
+    assert_ir_type(
+        &module.constants[2].ty,
+        &IrType::Named("string".to_string()),
+    );
+    assert_const_value(
+        &module.constants[2].value,
+        &ConstValue::String("hello".to_string()),
+    );
+}
+
+#[test]
+fn global_and_const_values_must_be_literals() {
+    assert_panics(|| {
+        generate_code(&[global_var(
+            "not_literal",
+            named_type("int"),
+            Expr::Variable("x".to_string()),
+        )]);
+    });
+    assert_panics(|| {
+        generate_code(&[const_var(
+            "also_not_literal",
+            named_type("int"),
+            Expr::BinaryOp {
+                lhs: Box::new(Expr::IntLiteral("1".to_string())),
+                binary_op: BinaryOp::Add,
+                rhs: Box::new(Expr::IntLiteral("2".to_string())),
+            },
+        )]);
+    });
+}
+
+#[test]
 fn unsupported_top_level_item_panics() {
     assert_panics(|| {
         generate_code(&[Item::Import(Import {
@@ -422,16 +518,6 @@ fn unsupported_top_level_item_panics() {
 #[test]
 fn all_non_function_top_level_items_panic() {
     let items = vec![
-        Item::GlobalVar(GlobalVar {
-            var_name: "g".to_string(),
-            var_type: named_type("int"),
-            value: Expr::IntLiteral("1".to_string()),
-        }),
-        Item::ConstVar(ConstVar {
-            var_name: "c".to_string(),
-            var_type: named_type("int"),
-            value: Expr::IntLiteral("1".to_string()),
-        }),
         Item::Trait(Trait {
             trait_name: "Display".to_string(),
             generic_params: Vec::new(),

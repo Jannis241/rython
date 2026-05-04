@@ -381,7 +381,10 @@ impl Lexer {
         number.push(self.current_char.unwrap()); // unwrap ist safe da die methode nur bei
         // Some() aufgerufen wird
 
-        while self.peek().is_some_and(|c| c.is_ascii_digit() || c == '.') {
+        while self
+            .peek()
+            .is_some_and(|c| c.is_ascii_digit() || (c == '.' && !is_float))
+        {
             if self.peek().unwrap() == '.' {
                 is_float = true;
             }
