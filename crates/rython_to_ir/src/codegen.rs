@@ -14,7 +14,7 @@ pub struct IrModule {
 pub struct IrGlobal {
     pub name: String,
     pub ty: IrType,
-    pub value: Option<ConstValue>,
+    pub value: ConstValue,
 }
 #[derive(Debug,Clone)]
 pub struct IrConstant {
