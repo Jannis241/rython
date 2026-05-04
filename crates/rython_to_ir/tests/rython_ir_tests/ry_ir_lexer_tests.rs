@@ -280,13 +280,33 @@ fn string_literal_keeps_unknown_escape_backslash() {
 }
 
 #[test]
+fn string_literal_does_not_start_comment_inside_string() {
+    assert_tokens(
+        r#""a // not a comment" return"#,
+        &[
+            (TokenKind::StringLiteral, "a // not a comment"),
+            (TokenKind::Return, "return"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn string_literal_keeps_single_quotes_as_text() {
+    assert_tokens(
+        r#""'a' and ''""#,
+        &[
+            (TokenKind::StringLiteral, "'a' and ''"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
 fn string_literal_keeps_final_backslash_in_unterminated_string() {
     assert_tokens(
         r#""abc\"#,
-        &[
-            (TokenKind::StringLiteral, "abc\\"),
-            (TokenKind::Eof, "EOF"),
-        ],
+        &[(TokenKind::StringLiteral, "abc\\"), (TokenKind::Eof, "EOF")],
     );
 }
 
@@ -299,6 +319,31 @@ fn lexes_char_literals() {
             (TokenKind::Char, "\n"),
             (TokenKind::Char, "'"),
             (TokenKind::Char, "\\"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn char_literal_keeps_unknown_escape_backslash() {
+    assert_tokens(
+        r#"'\q'"#,
+        &[(TokenKind::Char, "\\q"), (TokenKind::Eof, "EOF")],
+    );
+}
+
+#[test]
+fn char_literal_keeps_actual_newline() {
+    assert_tokens("'\n'", &[(TokenKind::Char, "\n"), (TokenKind::Eof, "EOF")]);
+}
+
+#[test]
+fn char_literals_can_be_adjacent_without_whitespace() {
+    assert_tokens(
+        "'a''b'",
+        &[
+            (TokenKind::Char, "a"),
+            (TokenKind::Char, "b"),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -350,7 +395,7 @@ fn unterminated_string_returns_string_token_until_end() {
 #[test]
 fn lexes_single_character_operators() {
     assert_tokens(
-        "+ - * / % = < > & | ^ ~",
+        "+ - * / % = ! < > & | ^ ~",
         &[
             (TokenKind::Plus, "+"),
             (TokenKind::Minus, "-"),
@@ -358,6 +403,7 @@ fn lexes_single_character_operators() {
             (TokenKind::Slash, "/"),
             (TokenKind::Percent, "%"),
             (TokenKind::Eq, "="),
+            (TokenKind::Bang, "!"),
             (TokenKind::Lt, "<"),
             (TokenKind::Gt, ">"),
             (TokenKind::Amp, "&"),
@@ -447,9 +493,29 @@ fn percent_equal_is_percent_then_equal() {
 }
 
 #[test]
-#[should_panic(expected = "Unexpected token '!'")]
-fn bang_before_other_character_panics() {
-    lex("!<");
+fn bang_before_other_character_is_separate_bang_token() {
+    assert_tokens(
+        "!< !true",
+        &[
+            (TokenKind::Bang, "!"),
+            (TokenKind::Lt, "<"),
+            (TokenKind::Bang, "!"),
+            (TokenKind::True, "true"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn slash_comment_at_end_of_input_finishes_with_eof() {
+    assert_tokens(
+        "let x // comment at eof",
+        &[
+            (TokenKind::Let, "let"),
+            (TokenKind::Ident, "x"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
 }
 
 #[test]
@@ -516,9 +582,8 @@ fn lexes_small_function_shape() {
 }
 
 #[test]
-#[should_panic(expected = "Unexpected token '!'")]
-fn bare_bang_panics() {
-    lex("!");
+fn bare_bang_is_tokenized() {
+    assert_tokens("!", &[(TokenKind::Bang, "!"), (TokenKind::Eof, "EOF")]);
 }
 
 #[test]

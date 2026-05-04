@@ -35,6 +35,21 @@ fn parse_items_from(parts: Vec<Token>) -> Result<Vec<Item>, ParseError> {
     p.parse()
 }
 
+fn parse_expr_source(source: &str) -> Result<Expr, ParseError> {
+    let mut p = Parser::new(Lexer::create_tokens(source.to_string()));
+    p.parse_expr()
+}
+
+fn parse_stmt_source(source: &str) -> Result<Stmt, ParseError> {
+    let mut p = Parser::new(Lexer::create_tokens(source.to_string()));
+    p.parse_statement()
+}
+
+fn parse_items_source(source: &str) -> Result<Vec<Item>, ParseError> {
+    let mut p = Parser::new(Lexer::create_tokens(source.to_string()));
+    p.parse()
+}
+
 fn dbg_eq<T: std::fmt::Debug, U: std::fmt::Debug>(left: T, right: U) {
     assert_eq!(format!("{:#?}", left), format!("{:#?}", right));
 }
@@ -433,6 +448,7 @@ lexer_case!(lexer_slash, "/", vec![tk(TokenKind::Slash, "/"), eof()]);
 lexer_case!(lexer_percent, "%", vec![tk(TokenKind::Percent, "%"), eof()]);
 lexer_case!(lexer_eq, "=", vec![tk(TokenKind::Eq, "="), eof()]);
 lexer_case!(lexer_eqeq, "==", vec![tk(TokenKind::EqEq, "=="), eof()]);
+lexer_case!(lexer_bang, "!", vec![tk(TokenKind::Bang, "!"), eof()]);
 lexer_case!(lexer_bangeq, "!=", vec![tk(TokenKind::BangEq, "!="), eof()]);
 lexer_case!(lexer_lt, "<", vec![tk(TokenKind::Lt, "<"), eof()]);
 lexer_case!(lexer_lteq, "<=", vec![tk(TokenKind::LtEq, "<="), eof()]);
@@ -466,12 +482,6 @@ lexer_case!(
 );
 lexer_case!(lexer_colon, ":", vec![tk(TokenKind::Colon, ":"), eof()]);
 lexer_case!(lexer_dot, ".", vec![tk(TokenKind::Dot, "."), eof()]);
-
-#[test]
-#[should_panic(expected = "Lexing Error: Unexpected token '!'")]
-fn lexer_bare_bang_panics() {
-    let _ = Lexer::create_tokens("!".to_string());
-}
 
 #[test]
 #[should_panic(expected = "Lexing Error: Could not convert")]
@@ -575,6 +585,31 @@ expr_case!(
         Box::new(Expr::IntLiteral("2".into()))
     ])
 );
+expr_case!(
+    expr_nested_list,
+    vec![
+        tk(TokenKind::LBracket, "["),
+        tk(TokenKind::LBracket, "["),
+        tk(TokenKind::Int, "1"),
+        tk(TokenKind::RBracket, "]"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::LBracket, "["),
+        tk(TokenKind::Int, "2"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::Int, "3"),
+        tk(TokenKind::RBracket, "]"),
+        tk(TokenKind::RBracket, "]")
+    ],
+    Expr::ListLiteral(vec![
+        Box::new(Expr::ListLiteral(vec![Box::new(Expr::IntLiteral(
+            "1".into()
+        ))])),
+        Box::new(Expr::ListLiteral(vec![
+            Box::new(Expr::IntLiteral("2".into())),
+            Box::new(Expr::IntLiteral("3".into()))
+        ]))
+    ])
+);
 
 expr_case!(
     expr_unary_neg,
@@ -606,6 +641,11 @@ expr_case!(
             value: Box::new(Expr::IntLiteral("1".into()))
         })
     }
+);
+error_case_expr!(
+    expr_bang_is_not_parsed_as_unary_not_yet,
+    vec![tk(TokenKind::Bang, "!"), tk(TokenKind::True, "true")],
+    |err| assert_unexpected_expr_start(err, TokenKind::Bang)
 );
 
 expr_case!(
@@ -673,6 +713,24 @@ expr_case!(
         }]
     }
 );
+expr_case!(
+    expr_chained_call,
+    vec![
+        tk(TokenKind::Ident, "factory"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::RParen, ")"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::Int, "1"),
+        tk(TokenKind::RParen, ")")
+    ],
+    Expr::Call {
+        callee: Box::new(Expr::Call {
+            callee: Box::new(Expr::Variable("factory".into())),
+            arguments: vec![]
+        }),
+        arguments: vec![Expr::IntLiteral("1".into())]
+    }
+);
 
 expr_case!(
     expr_struct_literal,
@@ -696,6 +754,34 @@ expr_case!(
         ]
     }
 );
+expr_case!(
+    expr_struct_literal_empty,
+    vec![
+        tk(TokenKind::Ident, "Unit"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::RBrace, "}")
+    ],
+    Expr::StructLiteral {
+        struct_name: "Unit".into(),
+        arguments: vec![]
+    }
+);
+expr_case!(
+    expr_struct_literal_allows_trailing_comma,
+    vec![
+        tk(TokenKind::Ident, "Point"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Int, "1"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::RBrace, "}")
+    ],
+    Expr::StructLiteral {
+        struct_name: "Point".into(),
+        arguments: vec![("x".into(), Expr::IntLiteral("1".into()))]
+    }
+);
 
 expr_case!(
     expr_assignment,
@@ -707,6 +793,23 @@ expr_case!(
     Expr::Assign {
         target_name: "x".into(),
         value: Box::new(Expr::IntLiteral("1".into()))
+    }
+);
+expr_case!(
+    expr_assignment_is_right_associative,
+    vec![
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Ident, "y"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "1")
+    ],
+    Expr::Assign {
+        target_name: "x".into(),
+        value: Box::new(Expr::Assign {
+            target_name: "y".into(),
+            value: Box::new(Expr::IntLiteral("1".into()))
+        })
     }
 );
 expr_case!(
@@ -759,6 +862,24 @@ expr_case!(
         target_name: "x".into(),
         binary_op: BinaryOp::Div,
         value: Box::new(Expr::IntLiteral("1".into()))
+    }
+);
+expr_case!(
+    expr_compound_assignment_value_can_be_assignment,
+    vec![
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::PlusEq, "+="),
+        tk(TokenKind::Ident, "y"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "1")
+    ],
+    Expr::BinaryOpAssign {
+        target_name: "x".into(),
+        binary_op: BinaryOp::Add,
+        value: Box::new(Expr::Assign {
+            target_name: "y".into(),
+            value: Box::new(Expr::IntLiteral("1".into()))
+        })
     }
 );
 
@@ -985,6 +1106,30 @@ error_case_expr!(
     |err| assert_unexpected_expr_start(err, TokenKind::Null)
 );
 error_case_expr!(
+    expr_trailing_comma_in_list_is_rejected,
+    vec![
+        tk(TokenKind::LBracket, "["),
+        tk(TokenKind::Int, "1"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::RBracket, "]")
+    ],
+    |err| assert_unexpected_expr_start(err, TokenKind::RBracket)
+);
+error_case_expr!(
+    expr_missing_struct_literal_field_name_after_comma,
+    vec![
+        tk(TokenKind::Ident, "Point"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Int, "1"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::Int, "2"),
+        tk(TokenKind::RBrace, "}")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::Ident, TokenKind::Int, 6)
+);
+error_case_expr!(
     expr_missing_rparen_in_grouping,
     vec![tk(TokenKind::LParen, "("), tk(TokenKind::Int, "1")],
     |err| assert_unexpected_token(err, TokenKind::RParen, TokenKind::Eof, 2)
@@ -1070,6 +1215,31 @@ stmt_case!(
             }
         ])),
         value: Expr::Variable("y".into())
+    })
+);
+stmt_case!(
+    stmt_let_value_can_be_struct_literal,
+    vec![
+        tk(TokenKind::Let, "let"),
+        tk(TokenKind::Ident, "p"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "Point"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Ident, "Point"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Int, "1"),
+        tk(TokenKind::RBrace, "}"),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    Stmt::Let(Let {
+        var_name: "p".into(),
+        var_type: Some(Type::Named("Point".into())),
+        value: Expr::StructLiteral {
+            struct_name: "Point".into(),
+            arguments: vec![("x".into(), Expr::IntLiteral("1".into()))]
+        }
     })
 );
 stmt_case!(
@@ -1259,11 +1429,43 @@ stmt_case!(
         inner_code: Block { statements: vec![] }
     })
 );
+stmt_case!(
+    stmt_for_iterable_disallows_struct_literal_without_grouping,
+    vec![
+        tk(TokenKind::For, "for"),
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::In, "in"),
+        tk(TokenKind::Ident, "Items"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::RBrace, "}"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::RBrace, "}")
+    ],
+    Stmt::For(For {
+        var_name: "x".into(),
+        iterable: Expr::Variable("Items".into()),
+        inner_code: Block { statements: vec![] }
+    })
+);
 
 error_case_stmt!(
     stmt_missing_semicolon_after_break,
     vec![tk(TokenKind::Break, "break")],
     |err| assert_unexpected_token(err, TokenKind::Semicolon, TokenKind::Eof, 1)
+);
+error_case_stmt!(
+    stmt_missing_semicolon_after_continue,
+    vec![tk(TokenKind::Continue, "continue")],
+    |err| assert_unexpected_token(err, TokenKind::Semicolon, TokenKind::Eof, 1)
+);
+error_case_stmt!(
+    stmt_expr_missing_semicolon,
+    vec![
+        tk(TokenKind::Ident, "f"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::RParen, ")")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::Semicolon, TokenKind::Eof, 3)
 );
 error_case_stmt!(
     stmt_let_missing_colon,
@@ -1329,6 +1531,24 @@ error_case_stmt!(
     ],
     |err| assert_unexpected_expr_start(err, TokenKind::Eof)
 );
+error_case_stmt!(
+    stmt_asm_requires_parenthesized_string,
+    vec![
+        tk(TokenKind::Asm, "asm"),
+        tk(TokenKind::StringLiteral, "nop"),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::LParen, TokenKind::StringLiteral, 1)
+);
+error_case_stmt!(
+    stmt_return_char_literal_is_not_expression_yet,
+    vec![
+        tk(TokenKind::Return, "return"),
+        tk(TokenKind::Char, "x"),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    |err| assert_unexpected_expr_start(err, TokenKind::Char)
+);
 
 // TOP-LEVEL ITEM TESTS
 item_case!(
@@ -1386,6 +1606,21 @@ item_case!(
         cases: vec!["Ok".into(), "Err".into()]
     })]
 );
+item_case!(
+    item_variant_allows_trailing_comma,
+    vec![
+        tk(TokenKind::Variant, "variant"),
+        tk(TokenKind::Ident, "Result"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Ident, "Ok"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::RBrace, "}")
+    ],
+    vec![Item::Variant(Variant {
+        variant_name: "Result".into(),
+        cases: vec!["Ok".into()]
+    })]
+);
 
 item_case!(
     item_trait_empty_generics_no_fns,
@@ -1433,6 +1668,33 @@ item_case!(
         }]
     })]
 );
+item_case!(
+    item_trait_operator_signature_without_return_type,
+    vec![
+        tk(TokenKind::Trait, "trait"),
+        tk(TokenKind::Ident, "Neg"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Fn, "fn"),
+        tk(TokenKind::Operator, "operator"),
+        tk(TokenKind::Minus, "-"),
+        tk(TokenKind::Ident, "neg"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::RParen, ")"),
+        tk(TokenKind::Semicolon, ";"),
+        tk(TokenKind::RBrace, "}")
+    ],
+    vec![Item::Trait(Trait {
+        trait_name: "Neg".into(),
+        generic_params: vec![],
+        function_signatures: vec![FunctionSignature {
+            function_name: "neg".into(),
+            generic_params: vec![],
+            params: vec![],
+            return_type: None,
+            operator: Some("-".into())
+        }]
+    })]
+);
 
 item_case!(
     item_struct_fields_only,
@@ -1462,6 +1724,28 @@ item_case!(
                 field_type: Type::Named("int".into())
             }
         ],
+        functions: vec![]
+    })]
+);
+item_case!(
+    item_struct_allows_trailing_field_comma,
+    vec![
+        tk(TokenKind::Struct, "struct"),
+        tk(TokenKind::Ident, "Point"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Ident, "x"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "int"),
+        tk(TokenKind::Comma, ","),
+        tk(TokenKind::RBrace, "}")
+    ],
+    vec![Item::Struct(Struct {
+        struct_name: "Point".into(),
+        generic_params: vec![],
+        fields: vec![StructField {
+            field_name: "x".into(),
+            field_type: Type::Named("int".into())
+        }],
         functions: vec![]
     })]
 );
@@ -1537,6 +1821,58 @@ item_case!(
         body: Block { statements: vec![] },
         return_type: None,
         operator: Some("+".into())
+    })]
+);
+item_case!(
+    item_fn_with_generic_params_and_bounds,
+    vec![
+        tk(TokenKind::Fn, "fn"),
+        tk(TokenKind::Ident, "id"),
+        tk(TokenKind::Lt, "<"),
+        tk(TokenKind::Ident, "T"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "Clone"),
+        tk(TokenKind::Plus, "+"),
+        tk(TokenKind::Ident, "Debug"),
+        tk(TokenKind::Gt, ">"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::Ident, "value"),
+        tk(TokenKind::Colon, ":"),
+        tk(TokenKind::Ident, "T"),
+        tk(TokenKind::RParen, ")"),
+        tk(TokenKind::Ident, "T"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Return, "return"),
+        tk(TokenKind::Ident, "value"),
+        tk(TokenKind::Semicolon, ";"),
+        tk(TokenKind::RBrace, "}")
+    ],
+    vec![Item::Function(Function {
+        name: "id".into(),
+        generic_params: vec![GenericParam {
+            name: "T".into(),
+            bounds: vec![
+                TraitBound {
+                    trait_name: "Clone".into(),
+                    args: vec![]
+                },
+                TraitBound {
+                    trait_name: "Debug".into(),
+                    args: vec![]
+                }
+            ]
+        }],
+        params: vec![Param {
+            name: "value".into(),
+            param_type: Type::Named("T".into())
+        }],
+        body: Block {
+            statements: vec![Stmt::Return(Return {
+                return_value: Some(Expr::Variable("value".into()))
+            })]
+        },
+        return_type: Some(Type::Named("T".into())),
+        operator: None
     })]
 );
 item_case!(
@@ -1667,6 +2003,16 @@ error_case_items!(
     |err| assert_unexpected_token(err, TokenKind::Semicolon, TokenKind::Eof, 2)
 );
 error_case_items!(
+    item_import_trailing_dot_requires_next_ident,
+    vec![
+        tk(TokenKind::Import, "import"),
+        tk(TokenKind::Ident, "foo"),
+        tk(TokenKind::Dot, "."),
+        tk(TokenKind::Semicolon, ";")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::Ident, TokenKind::Semicolon, 3)
+);
+error_case_items!(
     item_variant_missing_name,
     vec![
         tk(TokenKind::Variant, "variant"),
@@ -1697,6 +2043,25 @@ error_case_items!(
         tk(TokenKind::Ident, "Struct")
     ],
     |err| assert_unexpected_token(err, TokenKind::For, TokenKind::Ident, 2)
+);
+error_case_items!(
+    item_let_is_not_valid_top_level,
+    vec![tk(TokenKind::Let, "let")],
+    |err| assert_unexpected_top_level(err, TokenKind::Let)
+);
+error_case_items!(
+    item_trait_missing_function_semicolon,
+    vec![
+        tk(TokenKind::Trait, "trait"),
+        tk(TokenKind::Ident, "T"),
+        tk(TokenKind::LBrace, "{"),
+        tk(TokenKind::Fn, "fn"),
+        tk(TokenKind::Ident, "f"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::RParen, ")"),
+        tk(TokenKind::RBrace, "}")
+    ],
+    |err| assert_unexpected_token(err, TokenKind::Ident, TokenKind::RBrace, 7)
 );
 
 item_case!(
@@ -1822,4 +2187,99 @@ fn parse_expr_after_consuming_current_tokens_is_stable() {
     let expr = p.parse_expr().unwrap();
     dbg_eq(expr, Expr::IntLiteral("1".into()));
     assert_unexpected_eof(p.advance().unwrap_err());
+}
+
+#[test]
+fn source_expr_parses_through_lexer_and_parser() {
+    let expr = parse_expr_source("1 + 2 * f(3)").unwrap();
+    dbg_eq(
+        expr,
+        Expr::BinaryOp {
+            lhs: Box::new(Expr::IntLiteral("1".into())),
+            binary_op: BinaryOp::Add,
+            rhs: Box::new(Expr::BinaryOp {
+                lhs: Box::new(Expr::IntLiteral("2".into())),
+                binary_op: BinaryOp::Mul,
+                rhs: Box::new(Expr::Call {
+                    callee: Box::new(Expr::Variable("f".into())),
+                    arguments: vec![Expr::IntLiteral("3".into())],
+                }),
+            }),
+        },
+    );
+}
+
+#[test]
+fn source_expr_bang_reaches_parser_but_is_not_unary_not_yet() {
+    let err = parse_expr_source("!true").unwrap_err();
+    assert_unexpected_expr_start(err, TokenKind::Bang);
+}
+
+#[test]
+fn source_stmt_parses_char_token_then_rejects_it_as_expr() {
+    let err = parse_stmt_source("return 'x';").unwrap_err();
+    assert_unexpected_expr_start(err, TokenKind::Char);
+}
+
+#[test]
+fn source_items_parse_full_program_shape() {
+    let items = parse_items_source(
+        r#"
+        import std.io;
+        variant Option { Some, None, }
+        struct Point<T> { x: int, y: int, }
+        trait Display { fn show(self: Self) string; }
+        fn main() int { let x: int = 1; return x; }
+        "#,
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 5);
+    dbg_eq(
+        &items[0],
+        &Item::Import(Import {
+            import_name: "std.io".into(),
+        }),
+    );
+    dbg_eq(
+        &items[1],
+        &Item::Variant(Variant {
+            variant_name: "Option".into(),
+            cases: vec!["Some".into(), "None".into()],
+        }),
+    );
+    match &items[4] {
+        Item::Function(function) => {
+            assert_eq!(function.name, "main");
+            assert_eq!(function.body.statements.len(), 2);
+        }
+        other => panic!("expected function item, got {other:?}"),
+    }
+}
+
+#[test]
+fn ast_global_and_const_items_are_constructible_even_if_parser_does_not_emit_them_yet() {
+    let global = Item::GlobalVar(GlobalVar {
+        var_name: "counter".into(),
+        var_type: Type::Named("int".into()),
+        value: Expr::IntLiteral("0".into()),
+    });
+    let constant = Item::ConstVar(ConstVar {
+        var_name: "answer".into(),
+        var_type: Type::Named("int".into()),
+        value: Expr::IntLiteral("42".into()),
+    });
+
+    assert!(format!("{global:?}").contains("GlobalVar"));
+    assert!(format!("{constant:?}").contains("ConstVar"));
+}
+
+#[test]
+fn ast_unary_not_variant_is_constructible_even_if_parser_does_not_emit_it_yet() {
+    let expr = Expr::Unary {
+        op: UnaryOp::Not,
+        value: Box::new(Expr::BoolLiteral(true)),
+    };
+
+    assert!(format!("{expr:?}").contains("Not"));
 }

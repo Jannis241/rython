@@ -43,6 +43,7 @@ pub enum TokenKind {
     RParen,
     LBrace,
     RBrace,
+    Bang,
     LBracket,
     RBracket,
     Comma,
@@ -234,7 +235,7 @@ impl Lexer {
             self.advance();
             Token::new(TokenKind::BangEq, "!=".to_string())
         } else {
-            panic!("Lexing Error: Unexpected token '!'. Did you mean '!='?");
+            Token::new(TokenKind::Bang, "!".to_string())
         }
     }
 

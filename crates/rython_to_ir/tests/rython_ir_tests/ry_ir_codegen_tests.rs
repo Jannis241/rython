@@ -420,6 +420,93 @@ fn unsupported_top_level_item_panics() {
 }
 
 #[test]
+fn all_non_function_top_level_items_panic() {
+    let items = vec![
+        Item::GlobalVar(GlobalVar {
+            var_name: "g".to_string(),
+            var_type: named_type("int"),
+            value: Expr::IntLiteral("1".to_string()),
+        }),
+        Item::ConstVar(ConstVar {
+            var_name: "c".to_string(),
+            var_type: named_type("int"),
+            value: Expr::IntLiteral("1".to_string()),
+        }),
+        Item::Trait(Trait {
+            trait_name: "Display".to_string(),
+            generic_params: Vec::new(),
+            function_signatures: Vec::new(),
+        }),
+        Item::Struct(Struct {
+            struct_name: "Point".to_string(),
+            generic_params: Vec::new(),
+            fields: Vec::new(),
+            functions: Vec::new(),
+        }),
+        Item::Variant(Variant {
+            variant_name: "Option".to_string(),
+            cases: vec!["Some".to_string(), "None".to_string()],
+        }),
+        Item::TraitImplementation(TraitImplementation {
+            generic_params: Vec::new(),
+            trait_name: "Display".to_string(),
+            trait_args: Vec::new(),
+            struct_name: "Point".to_string(),
+            struct_args: Vec::new(),
+            functions: Vec::new(),
+        }),
+        Item::Import(Import {
+            import_name: "std".to_string(),
+        }),
+    ];
+
+    for item in items {
+        assert_panics(|| {
+            generate_code(&[item]);
+        });
+    }
+}
+
+#[test]
+fn function_order_is_preserved() {
+    let module = generate_code(&[
+        function("first", Vec::new(), None, Vec::new()),
+        function("second", Vec::new(), None, Vec::new()),
+        function("third", Vec::new(), None, Vec::new()),
+    ]);
+
+    assert_eq!(module.functions.len(), 3);
+    assert_eq!(module.functions[0].name, "first");
+    assert_eq!(module.functions[1].name, "second");
+    assert_eq!(module.functions[2].name, "third");
+}
+
+#[test]
+fn function_generic_params_and_operator_metadata_do_not_change_generated_function_shape() {
+    let item = Item::Function(Function {
+        name: "add".to_string(),
+        generic_params: vec![GenericParam {
+            name: "T".to_string(),
+            bounds: vec![TraitBound {
+                trait_name: "Add".to_string(),
+                args: Vec::new(),
+            }],
+        }],
+        params: Vec::new(),
+        body: block(vec![return_stmt(None)]),
+        return_type: None,
+        operator: Some("+".to_string()),
+    });
+
+    let module = generate_code(&[item]);
+    let function = &module.functions[0];
+    assert_eq!(function.name, "add");
+    assert!(function.parameter.is_empty());
+    assert_ir_type(&function.return_type, &IrType::Void);
+    assert_ret(&function.blocks[0].terminator, None);
+}
+
+#[test]
 fn unsupported_statement_panics() {
     assert_panics(|| {
         generate_code(&[function(
@@ -432,6 +519,47 @@ fn unsupported_statement_panics() {
 }
 
 #[test]
+fn all_non_return_statements_panic() {
+    let statements = vec![
+        Stmt::Let(Let {
+            var_name: "x".to_string(),
+            var_type: Some(named_type("int")),
+            value: Expr::IntLiteral("1".to_string()),
+        }),
+        Stmt::If(If {
+            condition: Expr::BoolLiteral(true),
+            if_code: block(Vec::new()),
+            else_code: None,
+        }),
+        Stmt::Loop(Loop {
+            inner_code: block(Vec::new()),
+        }),
+        Stmt::While(While {
+            condition: Expr::BoolLiteral(true),
+            inner_code: block(Vec::new()),
+        }),
+        Stmt::For(For {
+            var_name: "x".to_string(),
+            iterable: Expr::Variable("items".to_string()),
+            inner_code: block(Vec::new()),
+        }),
+        Stmt::Asm(Asm {
+            asm_code: "nop".to_string(),
+        }),
+        Stmt::Block(block(Vec::new())),
+        Stmt::Break,
+        Stmt::Continue,
+        Stmt::Expr(Expr::IntLiteral("1".to_string())),
+    ];
+
+    for stmt in statements {
+        assert_panics(|| {
+            generate_code(&[function("main", Vec::new(), None, vec![stmt])]);
+        });
+    }
+}
+
+#[test]
 fn unsupported_expression_panics() {
     assert_panics(|| {
         generate_code(&[function(
@@ -441,6 +569,56 @@ fn unsupported_expression_panics() {
             vec![return_stmt(Some(Expr::Variable("x".to_string())))],
         )]);
     });
+}
+
+#[test]
+fn all_non_literal_return_expressions_panic() {
+    let expressions = vec![
+        Expr::Assign {
+            target_name: "x".to_string(),
+            value: Box::new(Expr::IntLiteral("1".to_string())),
+        },
+        Expr::BinaryOpAssign {
+            target_name: "x".to_string(),
+            binary_op: BinaryOp::Add,
+            value: Box::new(Expr::IntLiteral("1".to_string())),
+        },
+        Expr::BinaryOp {
+            lhs: Box::new(Expr::IntLiteral("1".to_string())),
+            binary_op: BinaryOp::Add,
+            rhs: Box::new(Expr::IntLiteral("2".to_string())),
+        },
+        Expr::Call {
+            callee: Box::new(Expr::Variable("f".to_string())),
+            arguments: Vec::new(),
+        },
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            value: Box::new(Expr::IntLiteral("1".to_string())),
+        },
+        Expr::Unary {
+            op: UnaryOp::Not,
+            value: Box::new(Expr::BoolLiteral(true)),
+        },
+        Expr::Variable("x".to_string()),
+        Expr::ListLiteral(vec![Box::new(Expr::IntLiteral("1".to_string()))]),
+        Expr::StructLiteral {
+            struct_name: "Point".to_string(),
+            arguments: vec![("x".to_string(), Expr::IntLiteral("1".to_string()))],
+        },
+        Expr::Grouping(Box::new(Expr::IntLiteral("1".to_string()))),
+    ];
+
+    for expr in expressions {
+        assert_panics(|| {
+            generate_code(&[function(
+                "main",
+                Vec::new(),
+                Some(named_type("int")),
+                vec![return_stmt(Some(expr))],
+            )]);
+        });
+    }
 }
 
 #[test]
