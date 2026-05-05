@@ -5,6 +5,8 @@
     - funktion overloading!?!?!?!?
 
 
+eigener assembly und linker schreiben?
+
 ir_to_asm:
     //DONEDONEDONE f64 logik komplett implementen
     Struct Literals
