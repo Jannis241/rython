@@ -563,9 +563,9 @@ impl IrGenerator {
 #[derive(Debug, Clone)]
 pub enum CodegenError {
     InvalidItem(Item),
-    MismatchedTypes,
+    MismatchedTypes(IrType), // expected type
 
-    UnknwonVariable(String),
+    UnknownVariable(String),
 
     InvalidIntLiteral(String),
     InvalidFloatLiteral(String),

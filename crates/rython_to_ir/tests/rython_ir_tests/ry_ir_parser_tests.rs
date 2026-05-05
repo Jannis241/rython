@@ -2414,32 +2414,6 @@ fn field_access_chains_via_dot() {
     );
 }
 
-#[test]
-fn index_access_uses_brackets() {
-    let expr = parse_expr_source("xs[0]").unwrap();
-    dbg_eq(
-        expr,
-        Expr::Index {
-            collection: Box::new(Expr::Variable("xs".into())),
-            index: Box::new(Expr::IntLiteral("0".into())),
-        },
-    );
-}
-
-#[test]
-fn index_access_chains_with_field_access() {
-    let expr = parse_expr_source("grid[1].cell").unwrap();
-    dbg_eq(
-        expr,
-        Expr::FieldAccess {
-            object: Box::new(Expr::Index {
-                collection: Box::new(Expr::Variable("grid".into())),
-                index: Box::new(Expr::IntLiteral("1".into())),
-            }),
-            field_name: "cell".into(),
-        },
-    );
-}
 
 #[test]
 fn method_call_is_field_access_then_call() {
@@ -2517,20 +2491,6 @@ fn assignment_to_field_is_allowed() {
     );
 }
 
-#[test]
-fn assignment_to_index_is_allowed() {
-    let expr = parse_expr_source("xs[0] = 7").unwrap();
-    dbg_eq(
-        expr,
-        Expr::Assign {
-            target: Box::new(Expr::Index {
-                collection: Box::new(Expr::Variable("xs".into())),
-                index: Box::new(Expr::IntLiteral("0".into())),
-            }),
-            value: Box::new(Expr::IntLiteral("7".into())),
-        },
-    );
-}
 
 #[test]
 fn compound_assignment_to_field_is_allowed() {

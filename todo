@@ -18,6 +18,8 @@ ir_code_gen:
     jesko load param gucken ob gut (slop)
     gucken ob jesko param handling gut oder (||) slop
 
+    informationen bei error return type hinzufügen (zb expected type)
+
     Variablen
         - Scopes:
             - neue scopes bei: Functions, while, for, loop, if (immer bei '{')

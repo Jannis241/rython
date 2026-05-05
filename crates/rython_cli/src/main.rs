@@ -72,14 +72,18 @@ fn main() -> ExitCode {
     match run(&input, &options) {
         Ok(code) => {
             if (0..=255).contains(&code) {
+                println!("exit code: {code}");
                 ExitCode::from(code as u8)
             } else {
+                println!("exit code: 1");
                 ExitCode::from(1)
             }
         }
         Err(err) => {
             eprintln!("{err}");
+            println!("exit code: 1");
             ExitCode::from(1)
+
         }
     }
 }

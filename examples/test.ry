@@ -5,7 +5,9 @@ asm {
 
 };
 
-fn main() {
+fn main() int{
+
+    let a: int = 3;
 
     asm {
         mov rax, 1
@@ -14,6 +16,8 @@ fn main() {
         mov rdx, len
         syscall
     };
+
+    return a;
 }
 
 
