@@ -259,9 +259,6 @@ impl AsmCodeGen {
             } => {
                 if ty == IrType::F64 {
                     // f64-Arithmetik laeuft ueber SSE (xmm0/xmm1).
-                    // Vergleiche und Bit-/Shift-Operationen sind fuer f64 nicht definiert
-                    // TODO
-                    // und werfen einen klaren Fehler.
                     emit!(self, "    movsd xmm0, {}\n", self.temp_loc(lhs));
                     emit!(self, "    movsd xmm1, {}\n", self.temp_loc(rhs));
                     match op {

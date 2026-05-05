@@ -9,6 +9,9 @@ fn main() int{
 
     let a: int = 3;
 
+    "string"
+
+
     asm {
         mov rax, 1
         mov rdi, 1

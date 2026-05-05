@@ -201,6 +201,8 @@ pub enum ConstValue {
     Float(f64),
     Bool(bool),
     Char(char),
+
+    // todo was hier mit machen???????
     String(String),
     Null,
 
@@ -531,10 +533,20 @@ impl IrGenerator {
                 let new_const_instruction = IrInstruction::Const {
                     temp_id: temp_id,
                     ty: IrType::Named("string".to_string()),
-                    value: ConstValue::String(value.clone()),
+                    value: ConstValue::Struct {
+                        type_name: "string".to_string(),
+                        fields: vec![
+                            ("length".to_string(), ConstValue::Int(value.len() as i64)),
+                            ("start".to_string(), ConstValue::Int(0)),
+                        ],
+                    },
                 };
 
                 block.instructions.push(new_const_instruction);
+
+                // block.instructions.push(value);
+                // init_start()
+                // push_char(char) -> value chars
 
                 return Ok((temp_id, IrType::Named("string".to_string())));
             }
