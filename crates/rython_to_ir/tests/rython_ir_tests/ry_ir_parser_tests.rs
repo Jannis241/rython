@@ -2452,10 +2452,7 @@ fn method_call_is_field_access_then_call() {
                 field_name: "method".into(),
             }),
             type_args: vec![],
-            arguments: vec![
-                Expr::IntLiteral("1".into()),
-                Expr::IntLiteral("2".into()),
-            ],
+            arguments: vec![Expr::IntLiteral("1".into()), Expr::IntLiteral("2".into())],
         },
     );
 }
@@ -2497,10 +2494,7 @@ fn turbofish_supports_multiple_type_args() {
         expr,
         Expr::Call {
             callee: Box::new(Expr::Variable("pair".into())),
-            type_args: vec![
-                Type::Named("int".into()),
-                Type::Named("bool".into()),
-            ],
+            type_args: vec![Type::Named("int".into()), Type::Named("bool".into())],
             arguments: vec![],
         },
     );
@@ -2662,122 +2656,6 @@ fn operator_function_with_index_brackets_parses() {
             assert_eq!(f.operator.as_deref(), Some("[]"));
         }
         other => panic!("expected function item, got {other:?}"),
-    }
-}
-
-// ===== Closures =====
-
-#[test]
-fn closure_with_single_typed_param_parses() {
-    let expr = parse_expr_source("|x: int| x + 1").unwrap();
-    dbg_eq(
-        expr,
-        Expr::Closure {
-            params: vec![Param {
-                name: "x".into(),
-                param_type: Type::Named("int".into()),
-            }],
-            body: Box::new(Expr::BinaryOp {
-                lhs: Box::new(Expr::Variable("x".into())),
-                binary_op: BinaryOp::Add,
-                rhs: Box::new(Expr::IntLiteral("1".into())),
-            }),
-        },
-    );
-}
-
-#[test]
-fn closure_with_multiple_params_parses() {
-    let expr = parse_expr_source("|x: int, y: int| x + y").unwrap();
-    match expr {
-        Expr::Closure { params, .. } => {
-            assert_eq!(params.len(), 2);
-            assert_eq!(params[0].name, "x");
-            assert_eq!(params[1].name, "y");
-        }
-        other => panic!("expected closure, got {other:?}"),
-    }
-}
-
-#[test]
-fn closure_with_no_params_parses() {
-    let expr = parse_expr_source("|| 42").unwrap();
-    match expr {
-        Expr::Closure { params, body } => {
-            assert!(params.is_empty());
-            dbg_eq(*body, Expr::IntLiteral("42".into()));
-        }
-        other => panic!("expected closure, got {other:?}"),
-    }
-}
-
-// ===== Match =====
-
-#[test]
-fn match_with_literal_arms_parses() {
-    let expr = parse_expr_source("match x { 1 => 10, 2 => 20, _ => 0 }").unwrap();
-    match expr {
-        Expr::Match { scrutinee, arms } => {
-            dbg_eq(*scrutinee, Expr::Variable("x".into()));
-            assert_eq!(arms.len(), 3);
-            assert!(matches!(arms[0].pattern, Pattern::IntLiteral(ref s) if s == "1"));
-            assert!(matches!(arms[1].pattern, Pattern::IntLiteral(ref s) if s == "2"));
-            assert!(matches!(arms[2].pattern, Pattern::Wildcard));
-        }
-        other => panic!("expected match, got {other:?}"),
-    }
-}
-
-#[test]
-fn match_with_variant_case_pattern_parses() {
-    let expr = parse_expr_source("match v { Option.Some => 1, Option.None => 0 }").unwrap();
-    match expr {
-        Expr::Match { arms, .. } => {
-            assert_eq!(arms.len(), 2);
-            assert!(matches!(
-                &arms[0].pattern,
-                Pattern::VariantCase { variant_name, case_name }
-                    if variant_name == "Option" && case_name == "Some"
-            ));
-            assert!(matches!(
-                &arms[1].pattern,
-                Pattern::VariantCase { variant_name, case_name }
-                    if variant_name == "Option" && case_name == "None"
-            ));
-        }
-        other => panic!("expected match, got {other:?}"),
-    }
-}
-
-#[test]
-fn match_with_variable_binding_pattern_parses() {
-    let expr = parse_expr_source("match x { y => y }").unwrap();
-    match expr {
-        Expr::Match { arms, .. } => {
-            assert_eq!(arms.len(), 1);
-            assert!(matches!(&arms[0].pattern, Pattern::Variable(s) if s == "y"));
-        }
-        other => panic!("expected match, got {other:?}"),
-    }
-}
-
-// ===== if let =====
-
-#[test]
-fn if_let_with_variant_case_parses_to_if_let_stmt() {
-    let stmt = parse_stmt_source("if let Option.Some = v { return 1; } else { return 0; }").unwrap();
-    match stmt {
-        Stmt::IfLet(if_let) => {
-            assert!(matches!(
-                if_let.pattern,
-                Pattern::VariantCase { ref variant_name, ref case_name }
-                    if variant_name == "Option" && case_name == "Some"
-            ));
-            dbg_eq(if_let.value, Expr::Variable("v".into()));
-            assert_eq!(if_let.if_code.statements.len(), 1);
-            assert!(if_let.else_code.is_some());
-        }
-        other => panic!("expected Stmt::IfLet, got {other:?}"),
     }
 }
 

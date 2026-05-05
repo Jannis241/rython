@@ -5,7 +5,41 @@ ir_to_asm:
     String Literals
     Variant Literals
 
+lexer (wegen jesko ai slop)
+    asm error handling verbessern
+
+ir_code_gen:
+    Variablen (Scopes)
+    functions:
+        parameter + generic types
+        Expr:
+            BinaryOP
+            Unary
+            Variables (consts, globs)
+            Assign
+            Call
+            FieldAccess
+            Literals
+            Grouping
+        Stmt:
+            Let
+            If
+            Loop
+            While
+            For
+            Return
+            Block
+            Break,
+            Contiue,
+            Expr,
+    constans
+    globals
+    types:
+        Structs
+        Variants
 
 
-
+    traits auflösen
+    types resolven
+    names mangeln
 

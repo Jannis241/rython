@@ -6,7 +6,6 @@ asm {
 };
 
 fn main() {
-    let x = "lkjö";
 
     asm {
         mov rax, 1

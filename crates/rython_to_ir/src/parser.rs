@@ -1061,10 +1061,6 @@ impl Parser {
         self.expect_current(TokenKind::If)?;
         self.advance()?;
 
-        if self.current()?.kind == TokenKind::Let {
-            return self.parse_if_let_after_if();
-        }
-
         let condition = self.parse_expr_no_struct()?;
         self.expect_current(TokenKind::LBrace)?;
         self.advance()?;
@@ -1076,29 +1072,6 @@ impl Parser {
 
         Ok(Stmt::If(If {
             condition,
-            if_code,
-            else_code,
-        }))
-    }
-
-    fn parse_if_let_after_if(&mut self) -> Result<Stmt, ParseError> {
-        self.expect_current(TokenKind::Let)?;
-        self.advance()?;
-        let pattern = self.parse_pattern()?;
-        self.expect_current(TokenKind::Eq)?;
-        self.advance()?;
-        let value = self.parse_expr_no_struct()?;
-        self.expect_current(TokenKind::LBrace)?;
-        self.advance()?;
-        let if_code = self.parse_block()?;
-        self.expect_current(TokenKind::RBrace)?;
-        self.advance()?;
-
-        let else_code = self.parse_else_branch()?;
-
-        Ok(Stmt::IfLet(IfLet {
-            pattern,
-            value,
             if_code,
             else_code,
         }))

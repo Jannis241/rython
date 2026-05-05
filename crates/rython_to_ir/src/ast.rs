@@ -134,7 +134,6 @@ pub struct ConstVar {
 pub enum Stmt {
     Let(Let),
     If(If),
-    IfLet(IfLet),
     Loop(Loop),
     While(While),
     For(For),
@@ -156,14 +155,6 @@ pub struct Let {
 #[derive(Debug, Clone)]
 pub struct If {
     pub condition: Expr,
-    pub if_code: Block,
-    pub else_code: Option<Box<Stmt>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct IfLet {
-    pub pattern: Pattern,
-    pub value: Expr,
     pub if_code: Block,
     pub else_code: Option<Box<Stmt>>,
 }
@@ -452,15 +443,6 @@ fn print_stmt(stmt: &Stmt, level: usize) {
             println!("{}if (...)", indent(level));
             print_block(&i.if_code, level + 1);
 
-            if let Some(e) = &i.else_code {
-                println!("{}else", indent(level));
-                print_stmt(e, level + 1);
-            }
-        }
-
-        Stmt::IfLet(i) => {
-            println!("{}if let (...) = (...)", indent(level));
-            print_block(&i.if_code, level + 1);
             if let Some(e) = &i.else_code {
                 println!("{}else", indent(level));
                 print_stmt(e, level + 1);
