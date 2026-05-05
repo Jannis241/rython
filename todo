@@ -4,12 +4,22 @@ ir_to_asm:
     Array Literals
     String Literals
     Variant Literals
+    dass man innerhalb innerhalb eines von inline asm werte variable referencen kann außerhalb des asemblais
 
 lexer (wegen jesko ai slop)
     asm error handling verbessern
 
+
+parser und ast:
+    - eigene scopes mit {} erstellen
+
+
 ir_code_gen:
-    Variablen (Scopes)
+    Variablen
+        - Scopes:
+            - neue scopes bei: Functions, while, for, loop, if (immer bei '{')
+            - eigene scopes mit {}
+            - global scope
     functions:
         parameter + generic types
         Expr:
@@ -28,9 +38,8 @@ ir_code_gen:
             While
             For
             Return
-            Block
             Break,
-            Contiue,
+            Continue,
             Expr,
     constans
     globals

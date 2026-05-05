@@ -336,7 +336,6 @@ impl IrGenerator {
         }
 
         // die eigentlichen statements aus der function in instructions für den entry block machen
-
         for stmt in &function.body.statements {
             self.gen_stmt(stmt, &mut entry_block)?; // jedes statement aus der function handeln
                                                     // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
