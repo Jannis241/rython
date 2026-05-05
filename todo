@@ -1,5 +1,8 @@
 
-- insgesamat: errors (msg)
+
+- insgesamat:
+    - errors (msg)
+    - funktion overloading!?!?!?!?
 
 
 ir_to_asm:
@@ -19,8 +22,26 @@ parser und ast:
 
 
 ir_code_gen:
+
+    strucutre für alles planen damit jesko besser arbeiten kann:
+        - alles umbenenn
+        - alle verzeweigten dinge in ir module erklären mit beispiel in ir output
+        -
+
+    ir output aussehen für jesko in das file schreiben
+
+    namen von allem verbessern und klarer machen
+
     jesko load param gucken ob gut (slop)
     gucken ob jesko param handling gut oder (||) slop
+
+    ConstValue:
+        - struct, variant string fixxen (löschen)
+
+    gen expr: String, list zu einem struct machen --> init struct instruction???
+    gen expr: variant zu einem int machen
+
+    ConstValue zu primitiveValue umbennen (macht mehr sinn)
 
     informationen bei error return type hinzufügen (zb expected type)
 
@@ -59,5 +80,6 @@ ir_code_gen:
 
     traits auflösen
     types resolven
-    names mangeln
+    operator
+    names mangeln (! codex fragen was genau wo gemangelt werden muss weil jesko = kp)
 
