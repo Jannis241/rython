@@ -324,19 +324,6 @@ impl Parser {
                         field_name,
                     };
                 }
-                TokenKind::LBracket => {
-                    self.advance()?;
-                    let prev = self.allow_struct_literal;
-                    self.allow_struct_literal = true;
-                    let index = self.parse_expr()?;
-                    self.allow_struct_literal = prev;
-                    self.expect_current(TokenKind::RBracket)?;
-                    self.advance()?;
-                    expr = Expr::Index {
-                        collection: Box::new(expr),
-                        index: Box::new(index),
-                    };
-                }
                 _ => break,
             }
         }
@@ -435,81 +422,8 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::ListLiteral(elements))
             }
-            TokenKind::Pipe => self.parse_closure(),
-            TokenKind::Match => self.parse_match_expr(),
             other => Err(ParseError::UnexpectedExprStart(other)),
         }
-    }
-
-    fn parse_closure(&mut self) -> Result<Expr, ParseError> {
-        self.expect_current(TokenKind::Pipe)?;
-        self.advance()?;
-
-        let mut params = vec![];
-
-        loop {
-            if self.current()?.kind == TokenKind::Pipe {
-                self.advance()?;
-                break;
-            }
-
-            self.expect_current(TokenKind::Ident)?;
-            let name = self.current()?.value;
-            self.advance()?;
-            self.expect_current(TokenKind::Colon)?;
-            self.advance()?;
-            let param_type = self.parse_type()?;
-            params.push(Param { name, param_type });
-
-            if self.current()?.kind == TokenKind::Pipe {
-                self.advance()?;
-                break;
-            }
-            self.expect_current(TokenKind::Comma)?;
-            self.advance()?;
-        }
-
-        let body = self.parse_expr()?;
-        Ok(Expr::Closure {
-            params,
-            body: Box::new(body),
-        })
-    }
-
-    fn parse_match_expr(&mut self) -> Result<Expr, ParseError> {
-        self.expect_current(TokenKind::Match)?;
-        self.advance()?;
-
-        let scrutinee = self.parse_expr_no_struct()?;
-
-        self.expect_current(TokenKind::LBrace)?;
-        self.advance()?;
-
-        let mut arms = vec![];
-        loop {
-            if self.current()?.kind == TokenKind::RBrace {
-                self.advance()?;
-                break;
-            }
-
-            let pattern = self.parse_pattern()?;
-            self.expect_current(TokenKind::FatArrow)?;
-            self.advance()?;
-            let body = self.parse_expr()?;
-            arms.push(MatchArm { pattern, body });
-
-            if self.current()?.kind == TokenKind::RBrace {
-                self.advance()?;
-                break;
-            }
-            self.expect_current(TokenKind::Comma)?;
-            self.advance()?;
-        }
-
-        Ok(Expr::Match {
-            scrutinee: Box::new(scrutinee),
-            arms,
-        })
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
@@ -1332,10 +1246,7 @@ impl Parser {
 }
 
 fn is_valid_lvalue(expr: &Expr) -> bool {
-    matches!(
-        expr,
-        Expr::Variable(_) | Expr::FieldAccess { .. } | Expr::Index { .. }
-    )
+    matches!(expr, Expr::Variable(_) | Expr::FieldAccess { .. })
 }
 
 fn is_operator_token(kind: &TokenKind) -> bool {

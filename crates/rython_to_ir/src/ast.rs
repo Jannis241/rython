@@ -231,21 +231,6 @@ pub enum Expr {
         field_name: String,
     },
 
-    Index {
-        collection: Box<Expr>,
-        index: Box<Expr>,
-    },
-
-    Closure {
-        params: Vec<Param>,
-        body: Box<Expr>,
-    },
-
-    Match {
-        scrutinee: Box<Expr>,
-        arms: Vec<MatchArm>,
-    },
-
     Variable(String),
 
     IntLiteral(String),
@@ -261,12 +246,6 @@ pub enum Expr {
     },
 
     Grouping(Box<Expr>),
-}
-
-#[derive(Debug, Clone)]
-pub struct MatchArm {
-    pub pattern: Pattern,
-    pub body: Expr,
 }
 
 #[derive(Debug, Clone)]
@@ -440,7 +419,11 @@ fn print_item(item: &Item, level: usize) {
         }
 
         Item::Asm(asm) => {
-            println!("{}Asm {{...}} ({} chars)", indent(level), asm.asm_code.len());
+            println!(
+                "{}Asm {{...}} ({} chars)",
+                indent(level),
+                asm.asm_code.len()
+            );
         }
     }
 }
