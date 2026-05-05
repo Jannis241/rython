@@ -1,38 +1,58 @@
-in ir_codegen:
-    hat claude gesagt:
-     - Added IrInstruction::LoadParam { temp_id, index, ty } (codegen.rs:79).
-      - gen_func_struct now emits Alloca → LoadParam → Store → insert_variable for each parameter at function entry, so
-      params behave like normal locals (codegen.rs:309).
-      - Removed the unused process::Termination import.
-
-    hab ich gemaacht:
-         das von oben
-         inline asm generation
-         inline asm als top item in IrModule gemacht
-
-
-
-in lexer:
-    asm lexing besser gemacht (jetzt wird nach dem asm keywoard direkt das ganze asm in Token.value gemacht)
-      Both bugs sit outside the asm codegen I just fixed:
-      - The lexer failures are in rython_to_ir/src/lexer.rs:325 — that todo!() needs to become a real error path so the
-      test can pattern-match on it instead of panicking.
-
-in cli:
-      - The CLI failure is in manager/src/run.rs:51 — strip the ./ prefix or use Path::new(&out_file) directly so it works
-      for both relative and absolute paths.
-
-in parser:
-    asm als TopLevel Item gemacht
-
-in manager:
-    pipline mit assembeln, linken und ausführen gemacht
-
-
-in tests:
-    ry_ir_lexer_tests::lexes_all_keywords
-    ry_ir_parser_tests::lexer_keyword_asm
-    ry_ir_parser_tests::stmt_asm
-    ry_ir_parser_tests::stmt_asm_requires_parenthesized_string
-
-    waren outdated
+IR Codegen
+    Neues Instruction-Format eingeführt: IrInstruction::LoadParam { temp_id, index, ty }
+    Funktionsparameter werden jetzt systematisch am Funktionsanfang behandelt:
+    Ablauf: Alloca → LoadParam → Store → insert_variable
+    Ergebnis: Parameter verhalten sich wie normale lokale Variablen
+    Unused Import process::Termination entfernt
+    Inline-Assembly:
+    Codegen implementiert
+    Zusätzlich als Top-Level-Item im IrModule unterstützt
+Lexer
+    Inline-Assembly-Lexing verbessert:
+    Nach asm wird der komplette ASM-Block direkt als Token.value erfasst
+    Bekannte Fehlerquelle identifiziert:
+    todo!() in lexer.rs:325 muss durch echten Fehler ersetzt werden (für korrektes Testverhalten)
+    Neue Token-Typen:
+    Match, Underscore, FatArrow (=>), ColonColon (::)
+    Identifier-Regeln erweitert:
+    _ erlaubt (auch als einzelnes Underscore-Token)
+    match wird korrekt als Keyword erkannt
+CLI / Runner
+    Bugfix bei Pfadverarbeitung (manager/src/run.rs:51):
+    ./-Prefix wird korrekt behandelt bzw. durch Path::new(&out_file) ersetzt
+    Funktioniert jetzt für relative und absolute Pfade
+AST
+    Zuweisungen verallgemeinert:
+    target_name: String → target: Box<Expr>
+    Dadurch sind beliebige L-Values möglich
+    Neue Expression-Typen:
+    FieldAccess, Index, Closure, Match
+    Function Calls:
+    type_args: Vec<Type> hinzugefügt (für Turbofish)
+    Neue Statements und Strukturen:
+    Stmt::IfLet, IfLet, Pattern, MatchArm
+    Printing erweitert:
+    Explizites Handling für Item::Asm
+    Unterstützung für Stmt::IfLet
+Parser
+    Inline-Assembly als Top-Level-Item integriert
+    parse_call → parse_postfix:
+    Unterstützt jetzt (), ., [], sowie Turbofish ::<T,U>(...)
+    Assignment-Validierung:
+    LHS muss gültiges L-Value sein (Variable, FieldAccess, Index)
+    Fehlerfall: InvalidAssignmentTarget
+    Verbesserte Fehlerbehandlung:
+    parse_fn_def propagiert Return-Type-Fehler korrekt
+    Operator Parsing:
+    Whitelist-basierte Validierung
+    Neue Fehler: InvalidOperatorName, EmptyOperatorName
+    Neue Sprachfeatures:
+    Closures (|x: int| ...)
+    match-Expressions mit =>
+    Pattern Parsing
+    if let → Stmt::IfLet
+    Zugriff und Pfade:
+    a.b.c wird als verschachtelte FieldAccess-Kette modelliert
+Manager / Pipeline
+    Komplette Pipeline implementiert:
+    IR → Assembly → Assembling → Linking → Ausführung

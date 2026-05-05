@@ -727,11 +727,11 @@ fn unknown_variable_expression_returns_error() {
 fn all_non_literal_return_expressions_return_errors() {
     let expressions = vec![
         Expr::Assign {
-            target_name: "x".to_string(),
+            target: Box::new(Expr::Variable("x".to_string())),
             value: Box::new(Expr::IntLiteral("1".to_string())),
         },
         Expr::BinaryOpAssign {
-            target_name: "x".to_string(),
+            target: Box::new(Expr::Variable("x".to_string())),
             binary_op: BinaryOp::Add,
             value: Box::new(Expr::IntLiteral("1".to_string())),
         },
@@ -742,6 +742,7 @@ fn all_non_literal_return_expressions_return_errors() {
         },
         Expr::Call {
             callee: Box::new(Expr::Variable("f".to_string())),
+            type_args: Vec::new(),
             arguments: Vec::new(),
         },
         Expr::Unary {

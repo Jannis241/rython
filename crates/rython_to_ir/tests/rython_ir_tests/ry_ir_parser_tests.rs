@@ -677,6 +677,7 @@ expr_case!(
     ],
     Expr::Call {
         callee: Box::new(Expr::Variable("f".into())),
+        type_args: vec![],
         arguments: vec![]
     }
 );
@@ -690,6 +691,7 @@ expr_case!(
     ],
     Expr::Call {
         callee: Box::new(Expr::Variable("f".into())),
+        type_args: vec![],
         arguments: vec![Expr::IntLiteral("1".into())]
     }
 );
@@ -707,6 +709,7 @@ expr_case!(
     ],
     Expr::Call {
         callee: Box::new(Expr::Variable("f".into())),
+        type_args: vec![],
         arguments: vec![
             Expr::IntLiteral("1".into()),
             Expr::IntLiteral("2".into()),
@@ -727,8 +730,10 @@ expr_case!(
     ],
     Expr::Call {
         callee: Box::new(Expr::Variable("f".into())),
+        type_args: vec![],
         arguments: vec![Expr::Call {
             callee: Box::new(Expr::Variable("g".into())),
+            type_args: vec![],
             arguments: vec![Expr::IntLiteral("1".into())]
         }]
     }
@@ -746,8 +751,10 @@ expr_case!(
     Expr::Call {
         callee: Box::new(Expr::Call {
             callee: Box::new(Expr::Variable("factory".into())),
+            type_args: vec![],
             arguments: vec![]
         }),
+        type_args: vec![],
         arguments: vec![Expr::IntLiteral("1".into())]
     }
 );
@@ -811,7 +818,7 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::Assign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         value: Box::new(Expr::IntLiteral("1".into()))
     }
 );
@@ -825,9 +832,9 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::Assign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         value: Box::new(Expr::Assign {
-            target_name: "y".into(),
+            target: Box::new(Expr::Variable("y".into())),
             value: Box::new(Expr::IntLiteral("1".into()))
         })
     }
@@ -840,7 +847,7 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::BinaryOpAssign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         binary_op: BinaryOp::Add,
         value: Box::new(Expr::IntLiteral("1".into()))
     }
@@ -853,7 +860,7 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::BinaryOpAssign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         binary_op: BinaryOp::Sub,
         value: Box::new(Expr::IntLiteral("1".into()))
     }
@@ -866,7 +873,7 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::BinaryOpAssign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         binary_op: BinaryOp::Mul,
         value: Box::new(Expr::IntLiteral("1".into()))
     }
@@ -879,7 +886,7 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::BinaryOpAssign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         binary_op: BinaryOp::Div,
         value: Box::new(Expr::IntLiteral("1".into()))
     }
@@ -894,10 +901,10 @@ expr_case!(
         tk(TokenKind::Int, "1")
     ],
     Expr::BinaryOpAssign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         binary_op: BinaryOp::Add,
         value: Box::new(Expr::Assign {
-            target_name: "y".into(),
+            target: Box::new(Expr::Variable("y".into())),
             value: Box::new(Expr::IntLiteral("1".into()))
         })
     }
@@ -1110,6 +1117,7 @@ expr_case!(
         op: UnaryOp::Neg,
         value: Box::new(Expr::Call {
             callee: Box::new(Expr::Variable("f".into())),
+            type_args: vec![],
             arguments: vec![]
         })
     }
@@ -1314,6 +1322,7 @@ stmt_case!(
     ],
     Stmt::Expr(Expr::Call {
         callee: Box::new(Expr::Variable("f".into())),
+        type_args: vec![],
         arguments: vec![]
     })
 );
@@ -1326,7 +1335,7 @@ stmt_case!(
         tk(TokenKind::Semicolon, ";")
     ],
     Stmt::Expr(Expr::BinaryOpAssign {
-        target_name: "x".into(),
+        target: Box::new(Expr::Variable("x".into())),
         binary_op: BinaryOp::Add,
         value: Box::new(Expr::IntLiteral("1".into()))
     })
@@ -2109,7 +2118,11 @@ error_case_items!(
         tk(TokenKind::LParen, "("),
         tk(TokenKind::RParen, ")")
     ],
-    |err| assert_unexpected_token(err, TokenKind::LBrace, TokenKind::Eof, 4)
+    // After `f()` without a return-type token (e.g. an Ident) and without `{`,
+    // parse_type fails with `expected Ident, found Eof`. The previous behaviour
+    // silently swallowed that error and reported the missing brace instead, which
+    // hid genuine type errors.
+    |err| assert_unexpected_token(err, TokenKind::Ident, TokenKind::Eof, 4)
 );
 error_case_items!(
     item_impl_missing_for,
@@ -2278,6 +2291,7 @@ fn source_expr_parses_through_lexer_and_parser() {
                 binary_op: BinaryOp::Mul,
                 rhs: Box::new(Expr::Call {
                     callee: Box::new(Expr::Variable("f".into())),
+                    type_args: vec![],
                     arguments: vec![Expr::IntLiteral("3".into())],
                 }),
             }),
@@ -2381,4 +2395,452 @@ fn source_items_parse_global_and_const_declarations() {
             }),
         ],
     );
+}
+
+// ===== Postfix: field access, indexing, method calls =====
+
+#[test]
+fn field_access_chains_via_dot() {
+    let expr = parse_expr_source("a.b.c").unwrap();
+    dbg_eq(
+        expr,
+        Expr::FieldAccess {
+            object: Box::new(Expr::FieldAccess {
+                object: Box::new(Expr::Variable("a".into())),
+                field_name: "b".into(),
+            }),
+            field_name: "c".into(),
+        },
+    );
+}
+
+#[test]
+fn index_access_uses_brackets() {
+    let expr = parse_expr_source("xs[0]").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Index {
+            collection: Box::new(Expr::Variable("xs".into())),
+            index: Box::new(Expr::IntLiteral("0".into())),
+        },
+    );
+}
+
+#[test]
+fn index_access_chains_with_field_access() {
+    let expr = parse_expr_source("grid[1].cell").unwrap();
+    dbg_eq(
+        expr,
+        Expr::FieldAccess {
+            object: Box::new(Expr::Index {
+                collection: Box::new(Expr::Variable("grid".into())),
+                index: Box::new(Expr::IntLiteral("1".into())),
+            }),
+            field_name: "cell".into(),
+        },
+    );
+}
+
+#[test]
+fn method_call_is_field_access_then_call() {
+    let expr = parse_expr_source("obj.method(1, 2)").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Call {
+            callee: Box::new(Expr::FieldAccess {
+                object: Box::new(Expr::Variable("obj".into())),
+                field_name: "method".into(),
+            }),
+            type_args: vec![],
+            arguments: vec![
+                Expr::IntLiteral("1".into()),
+                Expr::IntLiteral("2".into()),
+            ],
+        },
+    );
+}
+
+#[test]
+fn variant_case_access_is_field_access() {
+    // Per the syntax doc, `Option.Some` is variant case construction; at the
+    // parser level it lowers to a regular field access on `Option`. Disambiguating
+    // variant types from real values is the job of a later semantic pass.
+    let expr = parse_expr_source("Option.Some").unwrap();
+    dbg_eq(
+        expr,
+        Expr::FieldAccess {
+            object: Box::new(Expr::Variable("Option".into())),
+            field_name: "Some".into(),
+        },
+    );
+}
+
+// ===== Generics on call sites (turbofish) =====
+
+#[test]
+fn turbofish_passes_type_args_to_call() {
+    let expr = parse_expr_source("make::<int>(5)").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Call {
+            callee: Box::new(Expr::Variable("make".into())),
+            type_args: vec![Type::Named("int".into())],
+            arguments: vec![Expr::IntLiteral("5".into())],
+        },
+    );
+}
+
+#[test]
+fn turbofish_supports_multiple_type_args() {
+    let expr = parse_expr_source("pair::<int, bool>()").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Call {
+            callee: Box::new(Expr::Variable("pair".into())),
+            type_args: vec![
+                Type::Named("int".into()),
+                Type::Named("bool".into()),
+            ],
+            arguments: vec![],
+        },
+    );
+}
+
+// ===== Assignment to lvalues =====
+
+#[test]
+fn assignment_to_field_is_allowed() {
+    let expr = parse_expr_source("p.name = \"x\"").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Assign {
+            target: Box::new(Expr::FieldAccess {
+                object: Box::new(Expr::Variable("p".into())),
+                field_name: "name".into(),
+            }),
+            value: Box::new(Expr::StringLiteral("x".into())),
+        },
+    );
+}
+
+#[test]
+fn assignment_to_index_is_allowed() {
+    let expr = parse_expr_source("xs[0] = 7").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Assign {
+            target: Box::new(Expr::Index {
+                collection: Box::new(Expr::Variable("xs".into())),
+                index: Box::new(Expr::IntLiteral("0".into())),
+            }),
+            value: Box::new(Expr::IntLiteral("7".into())),
+        },
+    );
+}
+
+#[test]
+fn compound_assignment_to_field_is_allowed() {
+    let expr = parse_expr_source("p.count += 1").unwrap();
+    dbg_eq(
+        expr,
+        Expr::BinaryOpAssign {
+            target: Box::new(Expr::FieldAccess {
+                object: Box::new(Expr::Variable("p".into())),
+                field_name: "count".into(),
+            }),
+            binary_op: BinaryOp::Add,
+            value: Box::new(Expr::IntLiteral("1".into())),
+        },
+    );
+}
+
+#[test]
+fn assignment_to_call_result_is_rejected() {
+    let err = parse_expr_from(vec![
+        tk(TokenKind::Ident, "f"),
+        tk(TokenKind::LParen, "("),
+        tk(TokenKind::RParen, ")"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "1"),
+    ])
+    .unwrap_err();
+    assert_invalid_assignment_target(err);
+}
+
+#[test]
+fn assignment_to_int_literal_is_rejected() {
+    let err = parse_expr_from(vec![
+        tk(TokenKind::Int, "5"),
+        tk(TokenKind::Eq, "="),
+        tk(TokenKind::Int, "1"),
+    ])
+    .unwrap_err();
+    assert_invalid_assignment_target(err);
+}
+
+// ===== parse_fn_def: missing return type or brace surfaces a real error =====
+
+#[test]
+fn fn_with_no_return_type_and_no_body_brace_errors_on_type() {
+    // After `f()` the parser should *not* silently treat the missing token as
+    // "no return type"; it should fail trying to read a return-type identifier.
+    let err = parse_items_source("fn f()").unwrap_err();
+    match err {
+        ParseError::UnexpectedToken {
+            expected: TokenKind::Ident,
+            found: TokenKind::Eof,
+            ..
+        } => {}
+        other => panic!("expected UnexpectedToken(Ident, Eof), got {other:?}"),
+    }
+}
+
+#[test]
+fn fn_with_explicit_return_type_then_body_parses_cleanly() {
+    let items = parse_items_source("fn add(x: int, y: int) int { return x + y; }").unwrap();
+    match &items[..] {
+        [Item::Function(f)] => {
+            assert_eq!(f.name, "add");
+            assert!(matches!(&f.return_type, Some(Type::Named(n)) if n == "int"));
+            assert_eq!(f.params.len(), 2);
+        }
+        other => panic!("expected single function item, got {other:?}"),
+    }
+}
+
+#[test]
+fn fn_without_return_type_but_with_body_parses_as_void() {
+    let items = parse_items_source("fn noop() {}").unwrap();
+    match &items[..] {
+        [Item::Function(f)] => {
+            assert_eq!(f.name, "noop");
+            assert!(f.return_type.is_none());
+        }
+        other => panic!("expected single function item, got {other:?}"),
+    }
+}
+
+// ===== parse_operator_name validation =====
+
+#[test]
+fn operator_function_with_known_symbol_parses() {
+    let items = parse_items_source("fn operator + add(rhs: int) int { return rhs; }").unwrap();
+    match &items[..] {
+        [Item::Function(f)] => {
+            assert_eq!(f.operator.as_deref(), Some("+"));
+            assert_eq!(f.name, "add");
+        }
+        other => panic!("expected function item, got {other:?}"),
+    }
+}
+
+#[test]
+fn operator_function_with_unknown_symbol_is_rejected() {
+    // `@` is not a known operator; the lexer rejects `@` outright, so use a
+    // sequence that lexes but is not in the operator set: `++`.
+    let err = parse_items_source("fn operator ++ inc() {}").unwrap_err();
+    match err {
+        ParseError::InvalidOperatorName(s) => assert_eq!(s, "++"),
+        other => panic!("expected InvalidOperatorName, got {other:?}"),
+    }
+}
+
+#[test]
+fn operator_function_with_no_symbol_is_rejected() {
+    let err = parse_items_source("fn operator add() {}").unwrap_err();
+    match err {
+        ParseError::EmptyOperatorName => {}
+        other => panic!("expected EmptyOperatorName, got {other:?}"),
+    }
+}
+
+#[test]
+fn operator_function_with_index_brackets_parses() {
+    let items = parse_items_source("fn operator [] get(rhs: int) int { return rhs; }").unwrap();
+    match &items[..] {
+        [Item::Function(f)] => {
+            assert_eq!(f.operator.as_deref(), Some("[]"));
+        }
+        other => panic!("expected function item, got {other:?}"),
+    }
+}
+
+// ===== Closures =====
+
+#[test]
+fn closure_with_single_typed_param_parses() {
+    let expr = parse_expr_source("|x: int| x + 1").unwrap();
+    dbg_eq(
+        expr,
+        Expr::Closure {
+            params: vec![Param {
+                name: "x".into(),
+                param_type: Type::Named("int".into()),
+            }],
+            body: Box::new(Expr::BinaryOp {
+                lhs: Box::new(Expr::Variable("x".into())),
+                binary_op: BinaryOp::Add,
+                rhs: Box::new(Expr::IntLiteral("1".into())),
+            }),
+        },
+    );
+}
+
+#[test]
+fn closure_with_multiple_params_parses() {
+    let expr = parse_expr_source("|x: int, y: int| x + y").unwrap();
+    match expr {
+        Expr::Closure { params, .. } => {
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "x");
+            assert_eq!(params[1].name, "y");
+        }
+        other => panic!("expected closure, got {other:?}"),
+    }
+}
+
+#[test]
+fn closure_with_no_params_parses() {
+    let expr = parse_expr_source("|| 42").unwrap();
+    match expr {
+        Expr::Closure { params, body } => {
+            assert!(params.is_empty());
+            dbg_eq(*body, Expr::IntLiteral("42".into()));
+        }
+        other => panic!("expected closure, got {other:?}"),
+    }
+}
+
+// ===== Match =====
+
+#[test]
+fn match_with_literal_arms_parses() {
+    let expr = parse_expr_source("match x { 1 => 10, 2 => 20, _ => 0 }").unwrap();
+    match expr {
+        Expr::Match { scrutinee, arms } => {
+            dbg_eq(*scrutinee, Expr::Variable("x".into()));
+            assert_eq!(arms.len(), 3);
+            assert!(matches!(arms[0].pattern, Pattern::IntLiteral(ref s) if s == "1"));
+            assert!(matches!(arms[1].pattern, Pattern::IntLiteral(ref s) if s == "2"));
+            assert!(matches!(arms[2].pattern, Pattern::Wildcard));
+        }
+        other => panic!("expected match, got {other:?}"),
+    }
+}
+
+#[test]
+fn match_with_variant_case_pattern_parses() {
+    let expr = parse_expr_source("match v { Option.Some => 1, Option.None => 0 }").unwrap();
+    match expr {
+        Expr::Match { arms, .. } => {
+            assert_eq!(arms.len(), 2);
+            assert!(matches!(
+                &arms[0].pattern,
+                Pattern::VariantCase { variant_name, case_name }
+                    if variant_name == "Option" && case_name == "Some"
+            ));
+            assert!(matches!(
+                &arms[1].pattern,
+                Pattern::VariantCase { variant_name, case_name }
+                    if variant_name == "Option" && case_name == "None"
+            ));
+        }
+        other => panic!("expected match, got {other:?}"),
+    }
+}
+
+#[test]
+fn match_with_variable_binding_pattern_parses() {
+    let expr = parse_expr_source("match x { y => y }").unwrap();
+    match expr {
+        Expr::Match { arms, .. } => {
+            assert_eq!(arms.len(), 1);
+            assert!(matches!(&arms[0].pattern, Pattern::Variable(s) if s == "y"));
+        }
+        other => panic!("expected match, got {other:?}"),
+    }
+}
+
+// ===== if let =====
+
+#[test]
+fn if_let_with_variant_case_parses_to_if_let_stmt() {
+    let stmt = parse_stmt_source("if let Option.Some = v { return 1; } else { return 0; }").unwrap();
+    match stmt {
+        Stmt::IfLet(if_let) => {
+            assert!(matches!(
+                if_let.pattern,
+                Pattern::VariantCase { ref variant_name, ref case_name }
+                    if variant_name == "Option" && case_name == "Some"
+            ));
+            dbg_eq(if_let.value, Expr::Variable("v".into()));
+            assert_eq!(if_let.if_code.statements.len(), 1);
+            assert!(if_let.else_code.is_some());
+        }
+        other => panic!("expected Stmt::IfLet, got {other:?}"),
+    }
+}
+
+#[test]
+fn plain_if_does_not_become_if_let() {
+    let stmt = parse_stmt_source("if x { return 1; }").unwrap();
+    assert!(matches!(stmt, Stmt::If(_)));
+}
+
+// ===== print_items must handle every Item variant without panicking =====
+
+#[test]
+fn print_items_handles_every_item_variant() {
+    let items = vec![
+        Item::GlobalVar(GlobalVar {
+            var_name: "g".into(),
+            var_type: Type::Named("int".into()),
+            value: Expr::IntLiteral("0".into()),
+        }),
+        Item::ConstVar(ConstVar {
+            var_name: "c".into(),
+            var_type: Type::Named("int".into()),
+            value: Expr::IntLiteral("1".into()),
+        }),
+        Item::Function(Function {
+            name: "f".into(),
+            generic_params: vec![],
+            params: vec![],
+            body: Block { statements: vec![] },
+            return_type: None,
+            operator: None,
+        }),
+        Item::Trait(Trait {
+            trait_name: "T".into(),
+            generic_params: vec![],
+            function_signatures: vec![],
+        }),
+        Item::Struct(Struct {
+            struct_name: "S".into(),
+            generic_params: vec![],
+            fields: vec![],
+            functions: vec![],
+        }),
+        Item::Variant(Variant {
+            variant_name: "V".into(),
+            cases: vec!["A".into(), "B".into()],
+        }),
+        Item::TraitImplementation(TraitImplementation {
+            generic_params: vec![],
+            trait_name: "T".into(),
+            trait_args: vec![],
+            struct_name: "S".into(),
+            struct_args: vec![],
+            functions: vec![],
+        }),
+        Item::Import(Import {
+            import_name: "std.io".into(),
+        }),
+        Item::Asm(Asm {
+            asm_code: "mov rax, 0".into(),
+        }),
+    ];
+    // Must not panic; the previous implementation's `_ => todo!()` arm
+    // would have triggered on Item::Asm.
+    print_items(&items);
 }

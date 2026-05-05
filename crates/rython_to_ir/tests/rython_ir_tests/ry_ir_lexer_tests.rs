@@ -228,7 +228,16 @@ fn dot_prefixed_decimal_starts_with_dot_token() {
 
 #[test]
 fn number_literals_do_not_allow_underscores() {
-    assert!(Lexer::create_tokens("123_456".to_string()).is_err());
+    // 123_456 is *not* a digit-separated literal; it lexes as the int 123
+    // immediately followed by the identifier _456.
+    assert_tokens(
+        "123_456",
+        &[
+            (TokenKind::Int, "123"),
+            (TokenKind::Ident, "_456"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
 }
 
 #[test]
@@ -606,8 +615,25 @@ fn unknown_character_panics() {
 }
 
 #[test]
-fn identifier_cannot_start_with_underscore() {
-    assert!(Lexer::create_tokens("_hidden".to_string()).is_err());
+fn identifier_can_start_with_underscore() {
+    assert_tokens(
+        "_hidden",
+        &[
+            (TokenKind::Ident, "_hidden"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn bare_underscore_lexes_as_wildcard_token() {
+    assert_tokens(
+        "_",
+        &[
+            (TokenKind::Underscore, "_"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
 }
 
 #[test]

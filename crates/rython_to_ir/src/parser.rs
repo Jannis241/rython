@@ -14,6 +14,9 @@ pub enum ParseError {
     ExpectedStatement,
     InvalidAssignmentTarget,
     UnexpectedExprStart(TokenKind),
+    InvalidOperatorName(String),
+    EmptyOperatorName,
+    InvalidPattern(TokenKind),
 }
 
 pub struct Parser {
@@ -86,13 +89,13 @@ impl Parser {
             TokenKind::Eq => {
                 self.advance()?;
                 let value = self.parse_assignment()?;
-                return match lhs {
-                    Expr::Variable(name) => Ok(Expr::Assign {
-                        target_name: name,
-                        value: Box::new(value),
-                    }),
-                    _ => Err(ParseError::InvalidAssignmentTarget),
-                };
+                if !is_valid_lvalue(&lhs) {
+                    return Err(ParseError::InvalidAssignmentTarget);
+                }
+                return Ok(Expr::Assign {
+                    target: Box::new(lhs),
+                    value: Box::new(value),
+                });
             }
             TokenKind::PlusEq => BinaryOp::Add,
             TokenKind::MinusEq => BinaryOp::Sub,
@@ -103,14 +106,14 @@ impl Parser {
 
         self.advance()?;
         let value = self.parse_assignment()?;
-        match lhs {
-            Expr::Variable(name) => Ok(Expr::BinaryOpAssign {
-                target_name: name,
-                binary_op: compound_op,
-                value: Box::new(value),
-            }),
-            _ => Err(ParseError::InvalidAssignmentTarget),
+        if !is_valid_lvalue(&lhs) {
+            return Err(ParseError::InvalidAssignmentTarget);
         }
+        Ok(Expr::BinaryOpAssign {
+            target: Box::new(lhs),
+            binary_op: compound_op,
+            value: Box::new(value),
+        })
     }
 
     fn parse_or(&mut self) -> Result<Expr, ParseError> {
@@ -286,7 +289,7 @@ impl Parser {
             TokenKind::Minus => UnaryOp::Neg,
             TokenKind::Tilde => UnaryOp::BitNot,
             TokenKind::Bang => UnaryOp::Not,
-            _ => return self.parse_call(),
+            _ => return self.parse_postfix(),
         };
         self.advance()?;
         let value = self.parse_unary()?;
@@ -296,26 +299,68 @@ impl Parser {
         })
     }
 
-    fn parse_call(&mut self) -> Result<Expr, ParseError> {
+    fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_primary()?;
-        while self.current()?.kind == TokenKind::LParen {
-            self.advance()?;
-            let mut args = vec![];
-            if self.current()?.kind != TokenKind::RParen {
-                args.push(self.parse_expr()?);
-                while self.current()?.kind == TokenKind::Comma {
-                    self.advance()?;
-                    args.push(self.parse_expr()?);
+        loop {
+            match self.current()?.kind {
+                TokenKind::LParen => {
+                    expr = self.finish_call(expr, Vec::new())?;
                 }
+                TokenKind::ColonColon => {
+                    // turbofish: expr::<T, U, ...>(args)
+                    self.advance()?;
+                    self.expect_current(TokenKind::Lt)?;
+                    let type_args = self.parse_type_args()?;
+                    self.expect_current(TokenKind::LParen)?;
+                    expr = self.finish_call(expr, type_args)?;
+                }
+                TokenKind::Dot => {
+                    self.advance()?;
+                    self.expect_current(TokenKind::Ident)?;
+                    let field_name = self.current()?.value;
+                    self.advance()?;
+                    expr = Expr::FieldAccess {
+                        object: Box::new(expr),
+                        field_name,
+                    };
+                }
+                TokenKind::LBracket => {
+                    self.advance()?;
+                    let prev = self.allow_struct_literal;
+                    self.allow_struct_literal = true;
+                    let index = self.parse_expr()?;
+                    self.allow_struct_literal = prev;
+                    self.expect_current(TokenKind::RBracket)?;
+                    self.advance()?;
+                    expr = Expr::Index {
+                        collection: Box::new(expr),
+                        index: Box::new(index),
+                    };
+                }
+                _ => break,
             }
-            self.expect_current(TokenKind::RParen)?;
-            self.advance()?;
-            expr = Expr::Call {
-                callee: Box::new(expr),
-                arguments: args,
-            };
         }
         Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr, type_args: Vec<Type>) -> Result<Expr, ParseError> {
+        self.expect_current(TokenKind::LParen)?;
+        self.advance()?;
+        let mut args = vec![];
+        if self.current()?.kind != TokenKind::RParen {
+            args.push(self.parse_expr()?);
+            while self.current()?.kind == TokenKind::Comma {
+                self.advance()?;
+                args.push(self.parse_expr()?);
+            }
+        }
+        self.expect_current(TokenKind::RParen)?;
+        self.advance()?;
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            type_args,
+            arguments: args,
+        })
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
@@ -390,7 +435,136 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::ListLiteral(elements))
             }
+            TokenKind::Pipe => self.parse_closure(),
+            TokenKind::Match => self.parse_match_expr(),
             other => Err(ParseError::UnexpectedExprStart(other)),
+        }
+    }
+
+    fn parse_closure(&mut self) -> Result<Expr, ParseError> {
+        self.expect_current(TokenKind::Pipe)?;
+        self.advance()?;
+
+        let mut params = vec![];
+
+        loop {
+            if self.current()?.kind == TokenKind::Pipe {
+                self.advance()?;
+                break;
+            }
+
+            self.expect_current(TokenKind::Ident)?;
+            let name = self.current()?.value;
+            self.advance()?;
+            self.expect_current(TokenKind::Colon)?;
+            self.advance()?;
+            let param_type = self.parse_type()?;
+            params.push(Param { name, param_type });
+
+            if self.current()?.kind == TokenKind::Pipe {
+                self.advance()?;
+                break;
+            }
+            self.expect_current(TokenKind::Comma)?;
+            self.advance()?;
+        }
+
+        let body = self.parse_expr()?;
+        Ok(Expr::Closure {
+            params,
+            body: Box::new(body),
+        })
+    }
+
+    fn parse_match_expr(&mut self) -> Result<Expr, ParseError> {
+        self.expect_current(TokenKind::Match)?;
+        self.advance()?;
+
+        let scrutinee = self.parse_expr_no_struct()?;
+
+        self.expect_current(TokenKind::LBrace)?;
+        self.advance()?;
+
+        let mut arms = vec![];
+        loop {
+            if self.current()?.kind == TokenKind::RBrace {
+                self.advance()?;
+                break;
+            }
+
+            let pattern = self.parse_pattern()?;
+            self.expect_current(TokenKind::FatArrow)?;
+            self.advance()?;
+            let body = self.parse_expr()?;
+            arms.push(MatchArm { pattern, body });
+
+            if self.current()?.kind == TokenKind::RBrace {
+                self.advance()?;
+                break;
+            }
+            self.expect_current(TokenKind::Comma)?;
+            self.advance()?;
+        }
+
+        Ok(Expr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+        })
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        let curr = self.current()?;
+        match curr.kind {
+            TokenKind::Underscore => {
+                self.advance()?;
+                Ok(Pattern::Wildcard)
+            }
+            TokenKind::Int => {
+                self.advance()?;
+                Ok(Pattern::IntLiteral(curr.value))
+            }
+            TokenKind::Float => {
+                self.advance()?;
+                Ok(Pattern::FloatLiteral(curr.value))
+            }
+            TokenKind::True => {
+                self.advance()?;
+                Ok(Pattern::BoolLiteral(true))
+            }
+            TokenKind::False => {
+                self.advance()?;
+                Ok(Pattern::BoolLiteral(false))
+            }
+            TokenKind::Null => {
+                self.advance()?;
+                Ok(Pattern::NullLiteral)
+            }
+            TokenKind::Char => {
+                self.advance()?;
+                let chars: Vec<char> = curr.value.chars().collect();
+                let c = chars.first().copied().unwrap_or('\0');
+                Ok(Pattern::CharLiteral(c))
+            }
+            TokenKind::StringLiteral => {
+                self.advance()?;
+                Ok(Pattern::StringLiteral(curr.value))
+            }
+            TokenKind::Ident => {
+                self.advance()?;
+                if self.current()?.kind == TokenKind::Dot {
+                    self.advance()?;
+                    self.expect_current(TokenKind::Ident)?;
+                    let case_name = self.current()?.value;
+                    self.advance()?;
+                    Ok(Pattern::VariantCase {
+                        variant_name: curr.value,
+                        case_name,
+                    })
+                } else {
+                    Ok(Pattern::Variable(curr.value))
+                }
+            }
+            other => Err(ParseError::InvalidPattern(other)),
         }
     }
 
@@ -584,19 +758,24 @@ impl Parser {
             return Ok(None);
         }
         self.advance()?;
+
         let mut operator = String::new();
         loop {
-            if self.current()?.kind == TokenKind::Ident {
+            let kind = self.current()?.kind;
+            if !is_operator_token(&kind) {
                 break;
             }
             operator.push_str(self.current()?.value.as_str());
             self.advance()?;
         }
+
         if operator.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(operator))
+            return Err(ParseError::EmptyOperatorName);
         }
+        if !is_known_operator(&operator) {
+            return Err(ParseError::InvalidOperatorName(operator));
+        }
+        Ok(Some(operator))
     }
 
     fn parse_import(&mut self) -> Result<(), ParseError> {
@@ -844,10 +1023,10 @@ impl Parser {
         let generic_params = self.parse_generic_params()?;
         let params = self.parse_params()?;
 
-        let return_type = if let Ok(typ) = self.parse_type() {
-            Some(typ)
-        } else {
+        let return_type = if self.current()?.kind == TokenKind::LBrace {
             None
+        } else {
+            Some(self.parse_type()?)
         };
 
         self.expect_current(TokenKind::LBrace)?;
@@ -967,6 +1146,11 @@ impl Parser {
     fn parse_if(&mut self) -> Result<Stmt, ParseError> {
         self.expect_current(TokenKind::If)?;
         self.advance()?;
+
+        if self.current()?.kind == TokenKind::Let {
+            return self.parse_if_let_after_if();
+        }
+
         let condition = self.parse_expr_no_struct()?;
         self.expect_current(TokenKind::LBrace)?;
         self.advance()?;
@@ -974,27 +1158,53 @@ impl Parser {
         self.expect_current(TokenKind::RBrace)?;
         self.advance()?;
 
-        let else_code = if self.current()?.kind == TokenKind::Else {
-            self.advance()?;
-            if self.current()?.kind == TokenKind::If {
-                Some(Box::new(self.parse_if()?))
-            } else {
-                self.expect_current(TokenKind::LBrace)?;
-                self.advance()?;
-                let block = self.parse_block()?;
-                self.expect_current(TokenKind::RBrace)?;
-                self.advance()?;
-                Some(Box::new(Stmt::Block(block)))
-            }
-        } else {
-            None
-        };
+        let else_code = self.parse_else_branch()?;
 
         Ok(Stmt::If(If {
             condition,
             if_code,
             else_code,
         }))
+    }
+
+    fn parse_if_let_after_if(&mut self) -> Result<Stmt, ParseError> {
+        self.expect_current(TokenKind::Let)?;
+        self.advance()?;
+        let pattern = self.parse_pattern()?;
+        self.expect_current(TokenKind::Eq)?;
+        self.advance()?;
+        let value = self.parse_expr_no_struct()?;
+        self.expect_current(TokenKind::LBrace)?;
+        self.advance()?;
+        let if_code = self.parse_block()?;
+        self.expect_current(TokenKind::RBrace)?;
+        self.advance()?;
+
+        let else_code = self.parse_else_branch()?;
+
+        Ok(Stmt::IfLet(IfLet {
+            pattern,
+            value,
+            if_code,
+            else_code,
+        }))
+    }
+
+    fn parse_else_branch(&mut self) -> Result<Option<Box<Stmt>>, ParseError> {
+        if self.current()?.kind != TokenKind::Else {
+            return Ok(None);
+        }
+        self.advance()?;
+        if self.current()?.kind == TokenKind::If {
+            Ok(Some(Box::new(self.parse_if()?)))
+        } else {
+            self.expect_current(TokenKind::LBrace)?;
+            self.advance()?;
+            let block = self.parse_block()?;
+            self.expect_current(TokenKind::RBrace)?;
+            self.advance()?;
+            Ok(Some(Box::new(Stmt::Block(block))))
+        }
     }
 
     fn parse_while(&mut self) -> Result<Stmt, ParseError> {
@@ -1119,4 +1329,61 @@ impl Parser {
 
         Ok(self.ast.clone())
     }
+}
+
+fn is_valid_lvalue(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::Variable(_) | Expr::FieldAccess { .. } | Expr::Index { .. }
+    )
+}
+
+fn is_operator_token(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::EqEq
+            | TokenKind::BangEq
+            | TokenKind::Lt
+            | TokenKind::LtEq
+            | TokenKind::Gt
+            | TokenKind::GtEq
+            | TokenKind::Amp
+            | TokenKind::Pipe
+            | TokenKind::Caret
+            | TokenKind::Tilde
+            | TokenKind::LtLt
+            | TokenKind::GtGt
+            | TokenKind::Bang
+            | TokenKind::LBracket
+            | TokenKind::RBracket
+    )
+}
+
+fn is_known_operator(name: &str) -> bool {
+    matches!(
+        name,
+        "+" | "-"
+            | "*"
+            | "/"
+            | "%"
+            | "=="
+            | "!="
+            | "<"
+            | "<="
+            | ">"
+            | ">="
+            | "&"
+            | "|"
+            | "^"
+            | "~"
+            | "<<"
+            | ">>"
+            | "!"
+            | "[]"
+    )
 }

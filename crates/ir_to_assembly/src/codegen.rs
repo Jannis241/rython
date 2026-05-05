@@ -211,6 +211,7 @@ impl AsmCodeGen {
                     ConstValue::Null => 0,
                     ConstValue::Char(c) => c as u64,
                     ConstValue::Float(f) => f.to_bits(),
+                    //TODO:
                     other => return Err(AsmCodeGenErr::UnsupportedConstValue(other)),
                 };
                 emit!(self, "    mov rax, {}\n", imm);
@@ -259,6 +260,7 @@ impl AsmCodeGen {
                 if ty == IrType::F64 {
                     // f64-Arithmetik laeuft ueber SSE (xmm0/xmm1).
                     // Vergleiche und Bit-/Shift-Operationen sind fuer f64 nicht definiert
+                    // TODO
                     // und werfen einen klaren Fehler.
                     emit!(self, "    movsd xmm0, {}\n", self.temp_loc(lhs));
                     emit!(self, "    movsd xmm1, {}\n", self.temp_loc(rhs));
@@ -267,6 +269,38 @@ impl AsmCodeGen {
                         IrBinaryOp::Sub => emit!(self, "    subsd xmm0, xmm1\n"),
                         IrBinaryOp::Mul => emit!(self, "    mulsd xmm0, xmm1\n"),
                         IrBinaryOp::Div => emit!(self, "    divsd xmm0, xmm1\n"),
+
+                        IrBinaryOp::Eq => {
+                            emit!(self, "    ucomisd xmm0, xmm1\n");
+                            emit!(self, "    sete al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Ne => {
+                            emit!(self, "    ucomisd xmm0, xmm1\n");
+                            emit!(self, "    setne al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Lt => {
+                            emit!(self, "    ucomisd xmm0, xmm1\n");
+                            emit!(self, "    setb al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Le => {
+                            emit!(self, "    ucomisd xmm0, xmm1\n");
+                            emit!(self, "    setbe al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Gt => {
+                            emit!(self, "    ucomisd xmm0, xmm1\n");
+                            emit!(self, "    seta al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Ge => {
+                            emit!(self, "    ucomisd xmm0, xmm1\n");
+                            emit!(self, "    setae al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+
                         other => return Err(AsmCodeGenErr::UnsupportedFloatOp(other)),
                     }
                     emit!(self, "    movsd {}, xmm0\n", self.temp_loc(temp_id));
@@ -376,29 +410,31 @@ impl AsmCodeGen {
             IrInstruction::Asm { code } => {
                 emit!(self, "    {}\n", code);
             }
-            // Aggregate-Werte (Arrays, Structs, Variants) haben keinen
-            // 1-qword-Stack-Slot wie skalare Temps. Brauchen Layout-Berechnung
-            // und einen reservierten Bereich im Frame -- noch nicht implementiert.
+            //TODO:
             IrInstruction::InitArray { .. } => {
                 return Err(AsmCodeGenErr::UnsupportedInstruction(
                     "InitArray (Arrays werden noch nicht unterstuetzt)".into(),
                 ));
             }
+            //TODO:
             IrInstruction::InitStruct { .. } => {
                 return Err(AsmCodeGenErr::UnsupportedInstruction(
                     "InitStruct (Structs werden noch nicht unterstuetzt)".into(),
                 ));
             }
+            //TODO:
             IrInstruction::InitVariant { .. } => {
                 return Err(AsmCodeGenErr::UnsupportedInstruction(
                     "InitVariant (Variants werden noch nicht unterstuetzt)".into(),
                 ));
             }
+            //TODO:
             IrInstruction::GetFieldAddr { .. } => {
                 return Err(AsmCodeGenErr::UnsupportedInstruction(
                     "GetFieldAddr (Struct-Feldzugriff braucht Typ-Tracking)".into(),
                 ));
             }
+            //TODO:
             IrInstruction::GetElementAddr { .. } => {
                 return Err(AsmCodeGenErr::UnsupportedInstruction(
                     "GetElementAddr (Array-Indexzugriff braucht Element-Groesse)".into(),

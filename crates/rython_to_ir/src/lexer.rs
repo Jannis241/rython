@@ -34,6 +34,9 @@ pub enum TokenKind {
 
     Operator,
 
+    Match,
+    Underscore,
+
     Amp,
     Pipe,
     Caret,
@@ -60,6 +63,8 @@ pub enum TokenKind {
     MinusEq,
     StarEq,
     SlashEq,
+    FatArrow,
+    ColonColon,
 
     EqEq,
     BangEq,
@@ -131,7 +136,7 @@ impl Lexer {
             Some('0'..='9') => self.handle_numbers(),
             Some('"') => self.handle_strings(),
             Some('\'') => self.handle_char(),
-            Some('a'..='z' | 'A'..='Z') => self.handle_idents()?,
+            Some('a'..='z' | 'A'..='Z' | '_') => self.handle_idents()?,
             Some('+') => self.handle_plus(),
             Some('-') => self.handle_minus(),
             Some('*') => self.handle_star(),
@@ -157,7 +162,7 @@ impl Lexer {
 
             Some(',') => Token::new(TokenKind::Comma, ",".to_string()),
             Some(';') => Token::new(TokenKind::Semicolon, ";".to_string()),
-            Some(':') => Token::new(TokenKind::Colon, ":".to_string()),
+            Some(':') => self.handle_colon(),
             Some('.') => Token::new(TokenKind::Dot, ".".to_string()),
 
             _ => {
@@ -227,11 +232,25 @@ impl Lexer {
     }
 
     fn handle_eq(&mut self) -> Token {
-        if self.peek() == Some('=') {
+        match self.peek() {
+            Some('=') => {
+                self.advance();
+                Token::new(TokenKind::EqEq, "==".to_string())
+            }
+            Some('>') => {
+                self.advance();
+                Token::new(TokenKind::FatArrow, "=>".to_string())
+            }
+            _ => Token::new(TokenKind::Eq, "=".to_string()),
+        }
+    }
+
+    fn handle_colon(&mut self) -> Token {
+        if self.peek() == Some(':') {
             self.advance();
-            Token::new(TokenKind::EqEq, "==".to_string())
+            Token::new(TokenKind::ColonColon, "::".to_string())
         } else {
-            Token::new(TokenKind::Eq, "=".to_string())
+            Token::new(TokenKind::Colon, ":".to_string())
         }
     }
 
@@ -313,6 +332,8 @@ impl Lexer {
             "and" => Token::new(TokenKind::And, ident),
             "or" => Token::new(TokenKind::Or, ident),
             "operator" => Token::new(TokenKind::Operator, ident),
+            "match" => Token::new(TokenKind::Match, ident),
+            "_" => Token::new(TokenKind::Underscore, ident),
             "asm" => {
                 self.advance();
                 let mut asm = String::new();

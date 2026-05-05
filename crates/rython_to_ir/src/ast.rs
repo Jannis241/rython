@@ -134,6 +134,7 @@ pub struct ConstVar {
 pub enum Stmt {
     Let(Let),
     If(If),
+    IfLet(IfLet),
     Loop(Loop),
     While(While),
     For(For),
@@ -155,6 +156,14 @@ pub struct Let {
 #[derive(Debug, Clone)]
 pub struct If {
     pub condition: Expr,
+    pub if_code: Block,
+    pub else_code: Option<Box<Stmt>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IfLet {
+    pub pattern: Pattern,
+    pub value: Expr,
     pub if_code: Block,
     pub else_code: Option<Box<Stmt>>,
 }
@@ -190,12 +199,12 @@ pub struct Asm {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Assign {
-        target_name: String,
+        target: Box<Expr>,
         value: Box<Expr>,
     },
 
     BinaryOpAssign {
-        target_name: String,
+        target: Box<Expr>,
         binary_op: BinaryOp,
         value: Box<Expr>,
     },
@@ -208,12 +217,33 @@ pub enum Expr {
 
     Call {
         callee: Box<Expr>,
+        type_args: Vec<Type>,
         arguments: Vec<Expr>,
     },
 
     Unary {
         op: UnaryOp,
         value: Box<Expr>,
+    },
+
+    FieldAccess {
+        object: Box<Expr>,
+        field_name: String,
+    },
+
+    Index {
+        collection: Box<Expr>,
+        index: Box<Expr>,
+    },
+
+    Closure {
+        params: Vec<Param>,
+        body: Box<Expr>,
+    },
+
+    Match {
+        scrutinee: Box<Expr>,
+        arms: Vec<MatchArm>,
     },
 
     Variable(String),
@@ -231,6 +261,28 @@ pub enum Expr {
     },
 
     Grouping(Box<Expr>),
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Wildcard,
+    Variable(String),
+    IntLiteral(String),
+    FloatLiteral(String),
+    BoolLiteral(bool),
+    StringLiteral(String),
+    CharLiteral(char),
+    NullLiteral,
+    VariantCase {
+        variant_name: String,
+        case_name: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -386,7 +438,10 @@ fn print_item(item: &Item, level: usize) {
                 print_item(&Item::Function(f.clone()), level + 1);
             }
         }
-        _ => todo!(),
+
+        Item::Asm(asm) => {
+            println!("{}Asm {{...}} ({} chars)", indent(level), asm.asm_code.len());
+        }
     }
 }
 
@@ -414,6 +469,15 @@ fn print_stmt(stmt: &Stmt, level: usize) {
             println!("{}if (...)", indent(level));
             print_block(&i.if_code, level + 1);
 
+            if let Some(e) = &i.else_code {
+                println!("{}else", indent(level));
+                print_stmt(e, level + 1);
+            }
+        }
+
+        Stmt::IfLet(i) => {
+            println!("{}if let (...) = (...)", indent(level));
+            print_block(&i.if_code, level + 1);
             if let Some(e) = &i.else_code {
                 println!("{}else", indent(level));
                 print_stmt(e, level + 1);
