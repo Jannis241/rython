@@ -1,3 +1,7 @@
+
+- insgesamat: errors (msg)
+
+
 ir_to_asm:
     f64 logik komplett implementen
     Struct Literals
