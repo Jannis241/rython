@@ -34,7 +34,6 @@ pub enum TokenKind {
 
     Operator,
 
-    Match,
     Underscore,
 
     Amp,
@@ -332,7 +331,6 @@ impl Lexer {
             "and" => Token::new(TokenKind::And, ident),
             "or" => Token::new(TokenKind::Or, ident),
             "operator" => Token::new(TokenKind::Operator, ident),
-            "match" => Token::new(TokenKind::Match, ident),
             "_" => Token::new(TokenKind::Underscore, ident),
             "asm" => {
                 self.advance();
