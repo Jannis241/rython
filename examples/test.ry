@@ -6,6 +6,8 @@ asm {
 };
 
 fn main() {
+    let x: string = "klj";
+
     asm {
         mov rax, 1
         mov rdi, 1
@@ -15,3 +17,6 @@ fn main() {
     };
 }
 
+
+
+struct string {}
