@@ -6,7 +6,7 @@ ir_to_asm:
     Variant Literals
     dass man innerhalb innerhalb eines von inline asm werte variable referencen kann außerhalb des asemblais
 
-lexer (wegen jesko ai slop)
+lexer (wegen jesko ai slop!!!!!!!!!!!!!!!!)
     asm error handling verbessern
 
 
@@ -15,6 +15,9 @@ parser und ast:
 
 
 ir_code_gen:
+    jesko load param gucken ob gut (slop)
+    gucken ob jesko param handling gut oder (||) slop
+
     Variablen
         - Scopes:
             - neue scopes bei: Functions, while, for, loop, if (immer bei '{')

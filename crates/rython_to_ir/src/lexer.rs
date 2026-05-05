@@ -292,14 +292,14 @@ impl Lexer {
     fn handle_idents(&mut self) -> Result<Token, LexingError> {
         let mut ident = String::new();
         ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
-                                                // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
+        // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
 
         while self
             .peek()
             .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             ident.push(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
-                                              // ob self.peek Some ist
+            // ob self.peek Some ist
             self.advance();
         }
 
@@ -416,7 +416,7 @@ impl Lexer {
         let mut is_float = false;
 
         number.push(self.current_char.unwrap()); // unwrap ist safe da die methode nur bei
-                                                 // Some() aufgerufen wird
+        // Some() aufgerufen wird
 
         while self
             .peek()
