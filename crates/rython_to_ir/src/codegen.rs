@@ -388,7 +388,7 @@ impl IrGenerator {
                 // gucken ob der ir_type welcher vom nutzer angegeben wurde, was die variable für
                 // ein typ hat auch wirklich den selben typ hat wie das ergebnis der expression
                 if (ir_type != expr_type) {
-                    return Err(CodegenError::MismatchedTypes);
+                    return Err(CodegenError::MismatchedTypes(ir_type, expr_type));
                 }
 
                 // Die temp variable welche das ergebnis der eval hält wird in die addr geladen
@@ -470,7 +470,7 @@ impl IrGenerator {
 
                 let var = self
                     .lookup_variable(name)
-                    .ok_or_else(|| CodegenError::UnknwonVariable(name.clone()))?;
+                    .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
 
                 block.instructions.push(IrInstruction::Load {
                     temp_id: freie_temp_var,
@@ -563,7 +563,7 @@ impl IrGenerator {
 #[derive(Debug, Clone)]
 pub enum CodegenError {
     InvalidItem(Item),
-    MismatchedTypes(IrType), // expected type
+    MismatchedTypes(IrType, IrType), // expected type, got
 
     UnknownVariable(String),
 
