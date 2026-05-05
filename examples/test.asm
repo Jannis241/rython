@@ -1,10 +1,11 @@
-    
+section .text
+
     section .data:
         msg db "Jannis Der Eier Kopf Yessirsky", 10
         len equ $ - msg
 
 
-section .text
+
 global _start
 
 _start:

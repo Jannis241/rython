@@ -98,6 +98,7 @@ pub struct Lexer {
 #[derive(Debug)]
 pub enum LexingError {
     InvalidChar(char),
+    UnexpectedEof,
 }
 
 impl Lexer {
@@ -130,7 +131,7 @@ impl Lexer {
             Some('0'..='9') => self.handle_numbers(),
             Some('"') => self.handle_strings(),
             Some('\'') => self.handle_char(),
-            Some('a'..='z' | 'A'..='Z') => self.handle_idents(),
+            Some('a'..='z' | 'A'..='Z') => self.handle_idents()?,
             Some('+') => self.handle_plus(),
             Some('-') => self.handle_minus(),
             Some('*') => self.handle_star(),
@@ -270,7 +271,7 @@ impl Lexer {
             _ => Token::new(TokenKind::Gt, ">".to_string()),
         }
     }
-    fn handle_idents(&mut self) -> Token {
+    fn handle_idents(&mut self) -> Result<Token, LexingError> {
         let mut ident = String::new();
         ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
                                                 // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
@@ -322,7 +323,7 @@ impl Lexer {
                         break Token::new(TokenKind::Asm, asm);
                     }
                     if self.peek().is_none() {
-                        todo!(r#"error implementen for: expected }} found EOF"#);
+                        return Err(LexingError::UnexpectedEof);
                     }
                     asm.push(self.peek().unwrap());
                     self.advance();
@@ -331,7 +332,7 @@ impl Lexer {
             _ => Token::new(TokenKind::Ident, ident),
         };
 
-        return token;
+        return Ok(token);
     }
     fn handle_strings(&mut self) -> Token {
         let mut str = String::new();

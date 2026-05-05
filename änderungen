@@ -1,0 +1,38 @@
+in ir_codegen:
+    hat claude gesagt:
+     - Added IrInstruction::LoadParam { temp_id, index, ty } (codegen.rs:79).
+      - gen_func_struct now emits Alloca → LoadParam → Store → insert_variable for each parameter at function entry, so
+      params behave like normal locals (codegen.rs:309).
+      - Removed the unused process::Termination import.
+
+    hab ich gemaacht:
+         das von oben
+         inline asm generation
+         inline asm als top item in IrModule gemacht
+
+
+
+in lexer:
+    asm lexing besser gemacht (jetzt wird nach dem asm keywoard direkt das ganze asm in Token.value gemacht)
+      Both bugs sit outside the asm codegen I just fixed:
+      - The lexer failures are in rython_to_ir/src/lexer.rs:325 — that todo!() needs to become a real error path so the
+      test can pattern-match on it instead of panicking.
+
+in cli:
+      - The CLI failure is in manager/src/run.rs:51 — strip the ./ prefix or use Path::new(&out_file) directly so it works
+      for both relative and absolute paths.
+
+in parser:
+    asm als TopLevel Item gemacht
+
+in manager:
+    pipline mit assembeln, linken und ausführen gemacht
+
+
+in tests:
+    ry_ir_lexer_tests::lexes_all_keywords
+    ry_ir_parser_tests::lexer_keyword_asm
+    ry_ir_parser_tests::stmt_asm
+    ry_ir_parser_tests::stmt_asm_requires_parenthesized_string
+
+    waren outdated

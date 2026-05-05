@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process::Termination};
+use std::collections::HashMap;
 
 use crate::ast::{Asm, Expr, Function, Item, Stmt, Type};
 
@@ -75,6 +75,14 @@ pub enum IrInstruction {
         temp_id: TempId,   // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
         ty: IrType,        // Typ des konstanten Werts
         value: ConstValue, // der konkrete konstante Wert
+    },
+
+    // Liest den N-ten Argument-Wert beim Funktionseintritt aus dem Aufrufer-Frame.
+    // Wird vom IR-Generator am Funktionsanfang fuer jeden Parameter eingefuegt.
+    LoadParam {
+        temp_id: TempId, // Ergebnis-Temp, der den Wert des Parameters haelt
+        index: usize,    // 0-basierter Index des Parameters
+        ty: IrType,      // Typ des Parameters
     },
 
     Alloca {
@@ -298,6 +306,35 @@ impl IrGenerator {
                                                // falls es kein return in der eigentlich function gibt ist es einfach ret(none) also
                                                // return void
         };
+
+        // Parameter werden wie normale lokale Variablen behandelt: erst eine Stack-Slot
+        // per Alloca holen, dann den eingehenden Argument-Wert per LoadParam einlesen,
+        // dann in den Slot schreiben und unter dem Parameter-Namen ins Scope eintragen.
+        for (index, param) in function.params.iter().enumerate() {
+            let param_ty = Self::convert_to_ir_type(&param.param_type);
+
+            let addr_temp = self.next_temp_id();
+            entry_block.instructions.push(IrInstruction::Alloca {
+                temp_id: addr_temp,
+                ty: param_ty.clone(),
+            });
+
+            let value_temp = self.next_temp_id();
+            entry_block.instructions.push(IrInstruction::LoadParam {
+                temp_id: value_temp,
+                index,
+                ty: param_ty.clone(),
+            });
+
+            entry_block.instructions.push(IrInstruction::Store {
+                ty: param_ty.clone(),
+                value: value_temp,
+                addr: addr_temp,
+            });
+
+            self.insert_variable(param.name.clone(), param_ty, addr_temp);
+        }
+
         // die eigentlichen statements aus der function in instructions für den entry block machen
 
         for stmt in &function.body.statements {

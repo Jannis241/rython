@@ -325,8 +325,8 @@ lexer_case!(
 );
 lexer_case!(
     lexer_keyword_asm,
-    "asm",
-    vec![tk(TokenKind::Asm, "asm"), eof()]
+    "asm {}",
+    vec![tk(TokenKind::Asm, ""), eof()]
 );
 
 lexer_case!(
@@ -1297,10 +1297,7 @@ stmt_case!(
 stmt_case!(
     stmt_asm,
     vec![
-        tk(TokenKind::Asm, "asm"),
-        tk(TokenKind::LParen, "("),
-        tk(TokenKind::StringLiteral, "mov ax, bx"),
-        tk(TokenKind::RParen, ")"),
+        tk(TokenKind::Asm, "mov ax, bx"),
         tk(TokenKind::Semicolon, ";")
     ],
     Stmt::Asm(Asm {
@@ -1558,7 +1555,7 @@ error_case_stmt!(
         tk(TokenKind::StringLiteral, "nop"),
         tk(TokenKind::Semicolon, ";")
     ],
-    |err| assert_unexpected_token(err, TokenKind::LParen, TokenKind::StringLiteral, 1)
+    |err| assert_unexpected_token(err, TokenKind::Semicolon, TokenKind::StringLiteral, 1)
 );
 stmt_case!(
     stmt_return_char_literal,

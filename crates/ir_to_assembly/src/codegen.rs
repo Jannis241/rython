@@ -7,6 +7,7 @@ pub enum AsmCodeGenErr {
     MultipleTypesFound(String),
     UnsupportedConstValue(ConstValue),
     UnsupportedInstruction(String),
+    UnsupportedFloatOp(IrBinaryOp),
 }
 
 macro_rules! emit {
@@ -30,20 +31,22 @@ impl AsmCodeGen {
         };
 
         g.generate_data_section()?;
-        g.generate_top_level_asm()?;
-        g.generate_functions()?;
+        g.generate_text_section()?;
 
         Ok(g.out)
     }
 
     fn generate_data_section(&mut self) -> Result<(), AsmCodeGenErr> {
-        if self.input.globals.is_empty() && self.input.constants.is_empty() {
+        let globals = std::mem::take(&mut self.input.globals);
+        let constants = std::mem::take(&mut self.input.constants);
+
+        if globals.is_empty() && constants.is_empty() {
             return Ok(());
         }
 
         emit!(self, "section .data\n");
 
-        for global in self.input.globals.clone() {
+        for global in globals {
             emit!(self, "{}:\n", global.name);
             emit!(
                 self,
@@ -51,7 +54,7 @@ impl AsmCodeGen {
                 self.const_value_into_string(global.value)?
             );
         }
-        for constant in self.input.constants.clone() {
+        for constant in constants {
             emit!(self, "{}:\n", constant.name);
             emit!(
                 self,
@@ -64,15 +67,20 @@ impl AsmCodeGen {
         Ok(())
     }
 
-    fn generate_top_level_asm(&mut self) -> Result<(), AsmCodeGenErr> {
-        for code in self.input.inline_assembly.clone() {
-            emit!(self, "    {}\n", code);
-        }
-        Ok(())
-    }
-
-    fn generate_functions(&mut self) -> Result<(), AsmCodeGenErr> {
+    fn generate_text_section(&mut self) -> Result<(), AsmCodeGenErr> {
         emit!(self, "section .text\n");
+
+        // Top-level inline asm wird vor _start emittiert, sodass Helfer-Funktionen,
+        // extern-Deklarationen oder zusaetzliche section-Direktiven moeglich sind.
+        // Nicht eingerueckt, weil die Zeilen Labels oder Direktiven enthalten koennen.
+        let top_level_asm = std::mem::take(&mut self.input.inline_assembly);
+        if !top_level_asm.is_empty() {
+            for code in top_level_asm {
+                emit!(self, "{}\n", code);
+            }
+            emit!(self, "\n");
+        }
+
         emit!(self, "global _start\n\n");
 
         emit!(self, "_start:\n");
@@ -81,7 +89,8 @@ impl AsmCodeGen {
         emit!(self, "    mov rax, 60\n");
         emit!(self, "    syscall\n\n");
 
-        for function in self.input.functions.clone() {
+        let functions = std::mem::take(&mut self.input.functions);
+        for function in functions {
             self.generate_function(function)?;
         }
 
@@ -132,7 +141,6 @@ impl AsmCodeGen {
             emit!(self, "    sub rsp, {}\n", frame_size);
         }
 
-        // emit!(self, "{}:\n", function.name);
         for block in function.blocks {
             self.generate_block(block)?;
         }
@@ -175,9 +183,9 @@ impl AsmCodeGen {
                 let then_lbl = strip_trailing_colon(&then_block);
                 let else_lbl = strip_trailing_colon(&else_block);
                 emit!(self, "    mov rax, {}\n", self.temp_loc(condition));
-                emit!(self, "    cmp rax, 0\n");
-                emit!(self, "    je .{}\n", else_lbl);
-                emit!(self, "    jmp .{}\n", then_lbl);
+                emit!(self, "    test rax, rax\n");
+                emit!(self, "    jnz .{}\n", then_lbl);
+                emit!(self, "    jmp .{}\n", else_lbl);
             }
         }
 
@@ -208,6 +216,17 @@ impl AsmCodeGen {
                 emit!(self, "    mov rax, {}\n", imm);
                 emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
             }
+            IrInstruction::LoadParam {
+                temp_id,
+                index,
+                ty: _,
+            } => {
+                // Argumente liegen oberhalb von rbp: arg0 bei [rbp+16], arg1 bei [rbp+24], ...
+                // (saved rbp bei [rbp+0], return-Adresse bei [rbp+8]).
+                let offset = 16 + index * 8;
+                emit!(self, "    mov rax, [rbp + {}]\n", offset);
+                emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
+            }
             IrInstruction::Alloca { temp_id, ty: _ } => {
                 let off = *self
                     .alloca_offsets
@@ -232,63 +251,81 @@ impl AsmCodeGen {
             }
             IrInstruction::Binary {
                 temp_id,
-                ty: _,
+                ty,
                 op,
                 lhs,
                 rhs,
             } => {
-                emit!(self, "    mov rax, {}\n", self.temp_loc(lhs));
-                emit!(self, "    mov rcx, {}\n", self.temp_loc(rhs));
-                match op {
-                    IrBinaryOp::Add => emit!(self, "    add rax, rcx\n"),
-                    IrBinaryOp::Sub => emit!(self, "    sub rax, rcx\n"),
-                    IrBinaryOp::Mul => emit!(self, "    imul rax, rcx\n"),
-                    IrBinaryOp::Div => {
-                        emit!(self, "    cqo\n");
-                        emit!(self, "    idiv rcx\n");
+                if ty == IrType::F64 {
+                    // f64-Arithmetik laeuft ueber SSE (xmm0/xmm1).
+                    // Vergleiche und Bit-/Shift-Operationen sind fuer f64 nicht definiert
+                    // und werfen einen klaren Fehler.
+                    emit!(self, "    movsd xmm0, {}\n", self.temp_loc(lhs));
+                    emit!(self, "    movsd xmm1, {}\n", self.temp_loc(rhs));
+                    match op {
+                        IrBinaryOp::Add => emit!(self, "    addsd xmm0, xmm1\n"),
+                        IrBinaryOp::Sub => emit!(self, "    subsd xmm0, xmm1\n"),
+                        IrBinaryOp::Mul => emit!(self, "    mulsd xmm0, xmm1\n"),
+                        IrBinaryOp::Div => emit!(self, "    divsd xmm0, xmm1\n"),
+                        other => return Err(AsmCodeGenErr::UnsupportedFloatOp(other)),
                     }
-                    IrBinaryOp::Mod => {
-                        emit!(self, "    cqo\n");
-                        emit!(self, "    idiv rcx\n");
-                        emit!(self, "    mov rax, rdx\n");
+                    emit!(self, "    movsd {}, xmm0\n", self.temp_loc(temp_id));
+                } else {
+                    emit!(self, "    mov rax, {}\n", self.temp_loc(lhs));
+                    emit!(self, "    mov rcx, {}\n", self.temp_loc(rhs));
+                    match op {
+                        IrBinaryOp::Add => emit!(self, "    add rax, rcx\n"),
+                        IrBinaryOp::Sub => emit!(self, "    sub rax, rcx\n"),
+                        IrBinaryOp::Mul => emit!(self, "    imul rax, rcx\n"),
+                        IrBinaryOp::Div => {
+                            emit!(self, "    cqo\n");
+                            emit!(self, "    idiv rcx\n");
+                        }
+                        IrBinaryOp::Mod => {
+                            emit!(self, "    cqo\n");
+                            emit!(self, "    idiv rcx\n");
+                            emit!(self, "    mov rax, rdx\n");
+                        }
+                        IrBinaryOp::Eq => {
+                            emit!(self, "    cmp rax, rcx\n");
+                            emit!(self, "    sete al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Ne => {
+                            emit!(self, "    cmp rax, rcx\n");
+                            emit!(self, "    setne al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Lt => {
+                            emit!(self, "    cmp rax, rcx\n");
+                            emit!(self, "    setl al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Le => {
+                            emit!(self, "    cmp rax, rcx\n");
+                            emit!(self, "    setle al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Gt => {
+                            emit!(self, "    cmp rax, rcx\n");
+                            emit!(self, "    setg al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::Ge => {
+                            emit!(self, "    cmp rax, rcx\n");
+                            emit!(self, "    setge al\n");
+                            emit!(self, "    movzx rax, al\n");
+                        }
+                        IrBinaryOp::And | IrBinaryOp::BitAnd => {
+                            emit!(self, "    and rax, rcx\n")
+                        }
+                        IrBinaryOp::Or | IrBinaryOp::BitOr => emit!(self, "    or rax, rcx\n"),
+                        IrBinaryOp::BitXor => emit!(self, "    xor rax, rcx\n"),
+                        IrBinaryOp::Shl => emit!(self, "    shl rax, cl\n"),
+                        IrBinaryOp::Shr => emit!(self, "    sar rax, cl\n"),
                     }
-                    IrBinaryOp::Eq => {
-                        emit!(self, "    cmp rax, rcx\n");
-                        emit!(self, "    sete al\n");
-                        emit!(self, "    movzx rax, al\n");
-                    }
-                    IrBinaryOp::Ne => {
-                        emit!(self, "    cmp rax, rcx\n");
-                        emit!(self, "    setne al\n");
-                        emit!(self, "    movzx rax, al\n");
-                    }
-                    IrBinaryOp::Lt => {
-                        emit!(self, "    cmp rax, rcx\n");
-                        emit!(self, "    setl al\n");
-                        emit!(self, "    movzx rax, al\n");
-                    }
-                    IrBinaryOp::Le => {
-                        emit!(self, "    cmp rax, rcx\n");
-                        emit!(self, "    setle al\n");
-                        emit!(self, "    movzx rax, al\n");
-                    }
-                    IrBinaryOp::Gt => {
-                        emit!(self, "    cmp rax, rcx\n");
-                        emit!(self, "    setg al\n");
-                        emit!(self, "    movzx rax, al\n");
-                    }
-                    IrBinaryOp::Ge => {
-                        emit!(self, "    cmp rax, rcx\n");
-                        emit!(self, "    setge al\n");
-                        emit!(self, "    movzx rax, al\n");
-                    }
-                    IrBinaryOp::And | IrBinaryOp::BitAnd => emit!(self, "    and rax, rcx\n"),
-                    IrBinaryOp::Or | IrBinaryOp::BitOr => emit!(self, "    or rax, rcx\n"),
-                    IrBinaryOp::BitXor => emit!(self, "    xor rax, rcx\n"),
-                    IrBinaryOp::Shl => emit!(self, "    shl rax, cl\n"),
-                    IrBinaryOp::Shr => emit!(self, "    sar rax, cl\n"),
+                    emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
                 }
-                emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
             }
             IrInstruction::Unary {
                 temp_id,
@@ -299,7 +336,14 @@ impl AsmCodeGen {
                 emit!(self, "    mov rax, {}\n", self.temp_loc(value));
                 match op {
                     IrUnaryOp::Neg => emit!(self, "    neg rax\n"),
-                    IrUnaryOp::Not => emit!(self, "    xor rax, 1\n"),
+                    IrUnaryOp::Not => {
+                        // Logisches Not: jeder Wert != 0 wird zu 0, sonst zu 1.
+                        // Ein blosses xor rax, 1 wuerde fuer Eingaben != 0/1 falsche
+                        // Ergebnisse liefern.
+                        emit!(self, "    cmp rax, 0\n");
+                        emit!(self, "    sete al\n");
+                        emit!(self, "    movzx rax, al\n");
+                    }
                     IrUnaryOp::BitNot => emit!(self, "    not rax\n"),
                 }
                 emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
@@ -332,21 +376,32 @@ impl AsmCodeGen {
             IrInstruction::Asm { code } => {
                 emit!(self, "    {}\n", code);
             }
+            // Aggregate-Werte (Arrays, Structs, Variants) haben keinen
+            // 1-qword-Stack-Slot wie skalare Temps. Brauchen Layout-Berechnung
+            // und einen reservierten Bereich im Frame -- noch nicht implementiert.
             IrInstruction::InitArray { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction("InitArray".into()));
+                return Err(AsmCodeGenErr::UnsupportedInstruction(
+                    "InitArray (Arrays werden noch nicht unterstuetzt)".into(),
+                ));
             }
             IrInstruction::InitStruct { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction("InitStruct".into()));
+                return Err(AsmCodeGenErr::UnsupportedInstruction(
+                    "InitStruct (Structs werden noch nicht unterstuetzt)".into(),
+                ));
             }
             IrInstruction::InitVariant { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction("InitVariant".into()));
+                return Err(AsmCodeGenErr::UnsupportedInstruction(
+                    "InitVariant (Variants werden noch nicht unterstuetzt)".into(),
+                ));
             }
             IrInstruction::GetFieldAddr { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction("GetFieldAddr".into()));
+                return Err(AsmCodeGenErr::UnsupportedInstruction(
+                    "GetFieldAddr (Struct-Feldzugriff braucht Typ-Tracking)".into(),
+                ));
             }
             IrInstruction::GetElementAddr { .. } => {
                 return Err(AsmCodeGenErr::UnsupportedInstruction(
-                    "GetElementAddr".into(),
+                    "GetElementAddr (Array-Indexzugriff braucht Element-Groesse)".into(),
                 ));
             }
         }
@@ -369,6 +424,9 @@ impl AsmCodeGen {
             ConstValue::Null => Ok("0".to_string()),
             ConstValue::Char(c) => Ok((c as u32).to_string()),
             ConstValue::Float(f) => Ok(f.to_bits().to_string()),
+            // String braucht ein Label in .rodata + db-Direktive plus Escaping --
+            // wird vorerst nicht unterstuetzt. Struct/Variant-Konstanten bekommen
+            // erst Support, wenn aggregierte Werte allgemein gehen.
             ConstValue::String(_) | ConstValue::Struct { .. } | ConstValue::Variant { .. } => {
                 Err(AsmCodeGenErr::UnsupportedConstValue(value))
             }
@@ -387,30 +445,18 @@ impl AsmCodeGen {
     }
 
     pub fn get_named_size_in_qds(&self, named_typ_name: String) -> Result<usize, AsmCodeGenErr> {
-        let types: Vec<IrTypeDef> = self.input.types.clone();
+        let mut matching_type: Option<&IrTypeDef> = None;
 
-        let mut matching_type = None;
-
-        for typ in types {
-            match typ {
-                IrTypeDef::Struct { name, fields } => {
-                    if named_typ_name == name {
-                        if matching_type.is_none() {
-                            matching_type = Some(IrTypeDef::Struct { name, fields });
-                        } else {
-                            return Err(AsmCodeGenErr::MultipleTypesFound(named_typ_name));
-                        }
-                    }
+        for typ in &self.input.types {
+            let name = match typ {
+                IrTypeDef::Struct { name, .. } => name,
+                IrTypeDef::Variant { name, .. } => name,
+            };
+            if name == &named_typ_name {
+                if matching_type.is_some() {
+                    return Err(AsmCodeGenErr::MultipleTypesFound(named_typ_name));
                 }
-                IrTypeDef::Variant { name, cases } => {
-                    if named_typ_name == name {
-                        if matching_type.is_none() {
-                            matching_type = Some(IrTypeDef::Variant { name, cases });
-                        } else {
-                            return Err(AsmCodeGenErr::MultipleTypesFound(named_typ_name));
-                        }
-                    }
-                }
+                matching_type = Some(typ);
             }
         }
 
@@ -419,10 +465,10 @@ impl AsmCodeGen {
         };
 
         let qds = match matching_type_def {
-            IrTypeDef::Struct { name: _, fields } => {
+            IrTypeDef::Struct { fields, .. } => {
                 let mut total_qds = 0;
                 for field in fields {
-                    total_qds += self.get_type_size_in_qds(field.ty)?;
+                    total_qds += self.get_type_size_in_qds(field.ty.clone())?;
                 }
                 total_qds
             }
@@ -440,6 +486,7 @@ fn strip_trailing_colon(s: &str) -> String {
 fn result_temp(instr: &IrInstruction) -> Option<TempId> {
     match instr {
         IrInstruction::Const { temp_id, .. }
+        | IrInstruction::LoadParam { temp_id, .. }
         | IrInstruction::Alloca { temp_id, .. }
         | IrInstruction::Load { temp_id, .. }
         | IrInstruction::Binary { temp_id, .. }

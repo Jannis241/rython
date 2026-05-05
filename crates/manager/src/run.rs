@@ -48,12 +48,16 @@ fn compile_and_run(asm: &str, file_name: &str) -> std::io::Result<()> {
         panic!("ld failed");
     }
 
-    let output = Command::new(format!("./{out_file}")).output()?;
+    let output = Command::new(format!("{out_file}")).output()?;
 
     println!(
         "Program output: {}",
         String::from_utf8_lossy(&output.stdout)
     );
+
+    let exit_code = output.status.code();
+
+    println!("Exit code: {:?}", exit_code);
 
     Ok(())
 }

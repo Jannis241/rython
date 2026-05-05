@@ -59,7 +59,7 @@ fn hash_comments_are_not_supported() {
 #[test]
 fn lexes_all_keywords() {
     assert_tokens(
-        "true false char null if else return loop while any let fn this in import struct trait global const impl for continue break variant and or operator asm",
+        "true false char null if else return loop while any let fn this in import struct trait global const impl for continue break variant and or operator asm {a}",
         &[
             (TokenKind::True, "true"),
             (TokenKind::False, "false"),
@@ -88,7 +88,7 @@ fn lexes_all_keywords() {
             (TokenKind::And, "and"),
             (TokenKind::Or, "or"),
             (TokenKind::Operator, "operator"),
-            (TokenKind::Asm, "asm"),
+            (TokenKind::Asm, "a"),
             (TokenKind::Eof, "EOF"),
         ],
     );
