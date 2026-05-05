@@ -6,18 +6,6 @@ asm {
 };
 
 fn main() {
-    let a: int = 100;
-    asm {
-        mov [rbp - 16], rcx    ; store value on stack
-        lea rsi, [rbp - 16]    ; rsi = address of that value
-        mov rax, 1      ; syscall: write
-        mov rdi, 1      ; fd: stdout
-        mov rdx, 2    ; length
-        syscall
-    };
-
-
-
     asm {
         mov rax, 1
         mov rdi, 1

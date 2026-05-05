@@ -40,7 +40,7 @@ impl AsmCodeGen {
         let globals = std::mem::take(&mut self.input.globals);
         let constants = std::mem::take(&mut self.input.constants);
 
-        if globals.is_empty() && constants.is_empty() {
+        if globals.is_empty() && constants.is_empty() && self.input.inline_assembly.is_empty() {
             return Ok(());
         }
 
@@ -64,15 +64,7 @@ impl AsmCodeGen {
         }
 
         emit!(self, "\n");
-        Ok(())
-    }
 
-    fn generate_text_section(&mut self) -> Result<(), AsmCodeGenErr> {
-        emit!(self, "section .text\n");
-
-        // Top-level inline asm wird vor _start emittiert, sodass Helfer-Funktionen,
-        // extern-Deklarationen oder zusaetzliche section-Direktiven moeglich sind.
-        // Nicht eingerueckt, weil die Zeilen Labels oder Direktiven enthalten koennen.
         let top_level_asm = std::mem::take(&mut self.input.inline_assembly);
         if !top_level_asm.is_empty() {
             for code in top_level_asm {
@@ -80,6 +72,14 @@ impl AsmCodeGen {
             }
             emit!(self, "\n");
         }
+
+        emit!(self, "\n");
+
+        Ok(())
+    }
+
+    fn generate_text_section(&mut self) -> Result<(), AsmCodeGenErr> {
+        emit!(self, "section .text\n");
 
         emit!(self, "global _start\n\n");
 
