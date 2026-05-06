@@ -14,11 +14,8 @@ pub struct IrModule {
 #[derive(Debug, Clone)]
 pub enum IrValue {
      Primitive(PrimitiveValue),
-     String(String),
      Struct { fields: Vec<(String, IrValue)> },
-     Array(Vec<IrValue>),
      Variant { case_name: String },
-     Null,
  }
 
 #[derive(Debug, Clone)]
