@@ -1,9 +1,9 @@
 ---------- IrModule ----------
 
-IrModule ist das Top-Level-Objekt, das am Ende von rython_to_ir an ir_to_assembly
-uebergeben wird.
+IrModule ist das Top-Level-Objekt, das rython_to_ir an ir_to_assembly
+uebergibt.
 
-Es enthaelt:
+Felder:
 
 - inline_assembly: Vec<String>
     Top-level Inline-Assembly als rohe Strings.
@@ -13,15 +13,57 @@ Es enthaelt:
 
 - globals: Vec<IrGlobal>
     Globale Variablen.
-    Achtung: Die Struktur existiert, aber der aktuelle Generator fuellt globals noch nicht.
 
 - constants: Vec<IrConstant>
     Top-level Konstanten.
-    Achtung: Die Struktur existiert, aber der aktuelle Generator fuellt constants noch nicht.
 
 - types: Vec<IrTypeDefinition>
     Eigene Typdefinitionen, also Structs und Variants.
-    Achtung: Die Struktur existiert, aber der aktuelle Generator fuellt types noch nicht.
+
+Aktueller Stand der erzeugten Module:
+
+- Funktionen werden in functions abgelegt.
+- Top-level asm wird in inline_assembly abgelegt.
+- globals, constants und types sind Teil der externen IR-Struktur, koennen aber
+  aktuell leer bleiben.
+
+
+---------- IrValue ----------
+
+IrValue beschreibt konkrete Werte, die direkt in der Modulstruktur stehen
+koennen, z.B. als Initialwert einer globalen Variable oder Konstante.
+
+Varianten:
+
+- Primitive(PrimitiveValue)
+    Ein primitiver Wert: int, float, bool oder char.
+
+- String(String)
+    Ein String-Wert.
+
+- Struct { fields: Vec<(String, IrValue)> }
+    Ein Struct-Wert. Jedes Feld besteht aus Feldname und Feldwert.
+
+- Array(Vec<IrValue>)
+    Ein Array-Wert mit den enthaltenen Elementwerten.
+
+- Variant { case_name: String }
+    Ein Variant-Wert mit dem ausgewaehlten Case.
+
+- Null
+    Ein Null-Wert, z.B. fuer Pointer oder fehlende Adresse.
+
+Beispiele:
+
+IrValue::Primitive(PrimitiveValue::Int(3))
+IrValue::String("hello".to_string())
+IrValue::Struct {
+    fields: vec![
+        ("x".to_string(), IrValue::Primitive(PrimitiveValue::Int(1))),
+        ("y".to_string(), IrValue::Primitive(PrimitiveValue::Int(2))),
+    ],
+}
+IrValue::Null
 
 
 ---------- IrGlobal ----------
@@ -36,9 +78,8 @@ Felder:
 - ty: IrType
     Typ der globalen Variable.
 
-- value: PrimitiveValue
+- value: IrValue
     Initialer Wert der globalen Variable.
-    Aktuell nur primitive Werte: Int, Float, Bool, Char.
 
 
 ---------- IrConstant ----------
@@ -53,14 +94,13 @@ Felder:
 - ty: IrType
     Typ der Konstante.
 
-- value: PrimitiveValue
+- value: IrValue
     Wert der Konstante.
-    Aktuell nur primitive Werte: Int, Float, Bool, Char.
 
 
 ---------- IrField ----------
 
-IrField verbindet nur einen Namen mit einem Typ. Es enthaelt keinen Wert.
+IrField verbindet einen Namen mit einem Typ. Es enthaelt keinen Wert.
 
 Felder:
 
@@ -121,7 +161,7 @@ Felder:
 
 - parameter: Vec<IrField>
     Parameter der Funktion. Jeder Parameter hat einen Namen und einen Typ,
-    aber keinen Wert.
+    aber keinen konkreten Wert.
 
 - return_type: IrType
     Rueckgabetyp laut Funktionssignatur.
@@ -150,7 +190,7 @@ IrFunction {
 
 ---------- IrBlock ----------
 
-IrBlock ist ein Basic Block: eine lineare Folge von Instructions plus genau ein
+IrBlock ist ein Basic Block: eine lineare Folge von Instructions plus ein
 Terminator am Ende.
 
 Felder:
@@ -181,8 +221,8 @@ IrBlock {
 
 TempId ist eine temporaere ID innerhalb einer Funktion.
 
-Viele Instructions schreiben ihr Ergebnis in eine TempId. Andere Instructions lesen
-spaeter aus diesen TempIds.
+Viele Instructions schreiben ihr Ergebnis in eine TempId. Andere Instructions
+lesen spaeter aus diesen TempIds.
 
 Beispiel:
 
@@ -190,9 +230,10 @@ PrimitiveConst { temp_id: TempId(0), ... }
 
 bedeutet: Der konstante Wert liegt danach unter TempId(0).
 
-Bei Alloca bezeichnet die TempId nicht den Wert selbst, sondern eine Adresse bzw.
-einen reservierten Speicherplatz. Load liest aus so einer Adresse, Store schreibt
-in so eine Adresse.
+Eine TempId kann je nach Instruction einen Wert oder eine Adresse bezeichnen.
+Bei Alloca, GlobalAddr, GetFieldAddr und GetElementAddr bezeichnet die Ergebnis-
+TempId eine Adresse. Load liest aus einer solchen Adresse, Store schreibt in eine
+solche Adresse.
 
 
 ---------- IrInstruction ----------
@@ -200,68 +241,85 @@ in so eine Adresse.
 IrInstruction beschreibt die eigentlichen Operationen im Code. Aus diesen
 Instructions baut ir_to_assembly spaeter Assembly.
 
-Alle aktuellen Varianten:
+Aktuelle Varianten:
 
-- PrimitiveConst { temp_id, ty, value }
+- PrimitiveConst { temp_id: TempId, ty: IrType, value: PrimitiveValue }
     Erzeugt einen primitiven konstanten Wert.
-    value ist ein PrimitiveValue.
+    Das Ergebnis liegt danach in temp_id.
 
-- LoadParam { temp_id, index, ty }
+- LoadParam { temp_id: TempId, index: usize, ty: IrType }
     Laedt den Funktionsparameter mit 0-basiertem Index.
     Beispiel: index 0 ist der erste Parameter.
+    Das Ergebnis liegt danach in temp_id.
 
-- Alloca { temp_id, ty }
+- Alloca { temp_id: TempId, ty: IrType }
     Reserviert Speicher fuer einen Wert vom Typ ty.
     temp_id bezeichnet danach die Adresse dieses Speicherplatzes.
 
-- Load { temp_id, ty, addr }
-    Liest einen Wert aus der Adresse addr.
+- Load { temp_id: TempId, ty: IrType, addr: TempId }
+    Liest einen Wert vom Typ ty aus der Adresse addr.
     Das Ergebnis liegt danach in temp_id.
 
-- Store { ty, value, addr }
+- Store { ty: IrType, value: TempId, addr: TempId }
     Schreibt den Wert value in die Adresse addr.
     Store hat keine Ergebnis-TempId.
 
-- Binary { temp_id, ty, op, lhs, rhs }
+- Binary { temp_id: TempId, ty: IrType, op: IrBinaryOp, lhs: TempId, rhs: TempId }
     Fuehrt eine binaere Operation mit lhs und rhs aus.
     Das Ergebnis liegt danach in temp_id.
 
-- Unary { temp_id, ty, op, value }
+- Unary { temp_id: TempId, ty: IrType, op: IrUnaryOp, value: TempId }
     Fuehrt eine unaere Operation auf value aus.
     Das Ergebnis liegt danach in temp_id.
 
-- Call { temp_id, function_name, args, return_type }
+- Call {
+      temp_id: Option<TempId>,
+      function_name: String,
+      args: Vec<TempId>,
+      return_type: IrType,
+  }
     Ruft eine Funktion auf.
     args sind die bereits berechneten Argumentwerte als TempIds.
     temp_id ist Some(...) bei einem Rueckgabewert und None bei void.
 
-- GlobalAddr { temp_id, name, ty }
+- GlobalAddr { temp_id: TempId, name: String, ty: IrType }
     Liefert die Adresse einer globalen Variable.
+    temp_id bezeichnet danach diese Adresse.
 
-- Asm { code }
+- Asm { code: String }
     Inline-Assembly innerhalb einer Funktion.
 
-- InitStruct { temp_id, ty, fields }
-    Erzeugt einen Struct-Wert.
-    fields ist Vec<(String, TempId)>: Feldname plus berechneter Feldwert.
-    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
-
-- GetFieldAddr { temp_id, base_addr, field_name }
-    Liefert die Adresse eines Feldes innerhalb eines Structs.
-    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
-
-- InitVariant { temp_id, ty, case_name }
+- InitVariant { temp_id: TempId, ty: IrType, case_name: String }
     Erzeugt einen Variant-Wert mit einem bestimmten Case.
-    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+    ty ist normalerweise ein benannter Typ, z.B. IrType::Named("Option").
 
-- InitArray { temp_id, element_type, elements }
+- InitArray {
+      temp_id: TempId,
+      element_type: IrType,
+      elements: Vec<TempId>,
+  }
     Erzeugt einen Array-Wert.
     elements sind die TempIds der einzelnen Elementwerte.
-    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
 
-- GetElementAddr { temp_id, base_addr, index }
+- GetElementAddr { temp_id: TempId, base_addr: TempId, index: TempId }
     Liefert die Adresse eines Array-Elements.
-    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+    base_addr ist die Adresse des Arrays.
+    index ist ein Wert-Temp fuer den Index.
+    temp_id bezeichnet danach die Elementadresse.
+
+- InitStruct {
+      temp_id: TempId,
+      ty: IrType,
+      fields: Vec<(String, TempId)>,
+  }
+    Erzeugt einen Struct-Wert.
+    fields enthaelt pro Feld den Feldnamen und die TempId des berechneten
+    Feldwerts.
+
+- GetFieldAddr { temp_id: TempId, base_addr: TempId, field_name: String }
+    Liefert die Adresse eines Feldes innerhalb eines Structs.
+    base_addr ist die Adresse des Structs.
+    temp_id bezeichnet danach die Feldadresse.
 
 
 ---------- IrBinaryOp ----------
@@ -299,7 +357,7 @@ Operationen fuer IrInstruction::Unary:
 
 ---------- Terminator ----------
 
-Ein Terminator beendet immer einen IrBlock.
+Ein Terminator beendet einen IrBlock.
 
 Varianten:
 
@@ -338,15 +396,13 @@ PrimitiveValue::Char('a')
 
 ---------- IrType ----------
 
-IrType beschreibt nur den Typ eines Werts, ohne konkreten Wert.
+IrType beschreibt den Typ eines Werts oder Speicherplatzes, ohne den konkreten
+Wert selbst zu enthalten.
 
 Varianten:
 
 - I64
     64-bit Integer.
-
-- F64
-    64-bit Float.
 
 - Bool
     Boolean.
@@ -354,8 +410,15 @@ Varianten:
 - Void
     Kein Rueckgabewert / kein Wert.
 
+- F64
+    64-bit Float.
+
 - Named(String)
     Benannter Typ fuer eigene Typen oder spezielle Typen wie "string".
+
+- Pointer(Box<IrType>)
+    Pointer auf einen anderen IR-Typ.
+    Der innere Typ beschreibt, worauf der Pointer zeigt.
 
 Beispiele:
 
@@ -365,25 +428,4 @@ IrType::Bool
 IrType::Void
 IrType::Named("string".to_string())
 IrType::Named("Point".to_string())
-
-
----------- Wichtiger aktueller Stand ----------
-
-Aktuell erzeugt generate_code nur:
-
-- functions
-- inline_assembly
-
-Die Felder globals, constants und types existieren in IrModule bereits, werden vom
-aktuellen Generator aber noch nicht befuellt.
-
-Ausserdem baut ir_to_assembly im aktuellen Repo gerade nicht gegen diese IR, weil
-es noch alte Namen erwartet:
-
-- ConstValue statt PrimitiveValue
-- IrInstruction::Const statt IrInstruction::PrimitiveConst
-- IrTypeDef statt IrTypeDefinition
-- IrType::Pointer, obwohl Pointer aktuell in IrType nicht existiert
-
-Bevor ir_to_assembly stabil auf dieser IR arbeiten kann, muessen diese Namen und
-Typen zwischen rython_to_ir und ir_to_assembly angeglichen werden.
+IrType::Pointer(Box::new(IrType::I64))
