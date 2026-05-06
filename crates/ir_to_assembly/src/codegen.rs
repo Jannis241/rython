@@ -404,36 +404,45 @@ impl AsmCodeGen {
             IrInstruction::Asm { code } => {
                 emit!(self, "    {}\n", code);
             }
-            //TODO:
-            IrInstruction::InitArray { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction(
-                    "InitArray (Arrays werden noch nicht unterstuetzt)".into(),
-                ));
+            IrInstruction::InitStruct { ty, fields } => {}
+            IrInstruction::InitVariant {
+                temp_id,
+                ty,
+                case_name,
+            } => {
+                let mut idx = None;
+
+                let IrType::Named(init_name) = ty else {
+                    unreachable!()
+                };
+
+                for typedef in self.input.types.iter() {
+                    if let IrTypeDefinition::Variant { name, cases } = typedef {
+                        if name == &init_name {
+                            for (x, case) in cases.iter().enumerate() {
+                                if case == &case_name {
+                                    if idx != None {
+                                        return Err(todo!("case name is ambigous"));
+                                    }
+                                    idx = Some(x);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let Some(i) = idx else {
+                    return Err(todo!("variant Not Found"));
+                };
+
+                emit!(self, "    mov rax, {}\n", i);
+                emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
             }
-            //TODO:
-            IrInstruction::InitStruct { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction(
-                    "InitStruct (Structs werden noch nicht unterstuetzt)".into(),
-                ));
-            }
-            //TODO:
-            IrInstruction::InitVariant { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction(
-                    "InitVariant (Variants werden noch nicht unterstuetzt)".into(),
-                ));
-            }
-            //TODO:
-            IrInstruction::GetFieldAddr { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction(
-                    "GetFieldAddr (Struct-Feldzugriff braucht Typ-Tracking)".into(),
-                ));
-            }
-            //TODO:
-            IrInstruction::GetElementAddr { .. } => {
-                return Err(AsmCodeGenErr::UnsupportedInstruction(
-                    "GetElementAddr (Array-Indexzugriff braucht Element-Groesse)".into(),
-                ));
-            }
+            IrInstruction::GetFieldAddr {
+                temp_id,
+                base_addr,
+                field_name,
+            } => {}
         }
 
         Ok(())
