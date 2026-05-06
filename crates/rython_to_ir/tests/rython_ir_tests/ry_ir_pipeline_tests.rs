@@ -1,7 +1,7 @@
 use std::panic::{self, AssertUnwindSafe};
 
 use rython_to_ir::codegen::{
-    generate_code, CodegenError, PrimitiveValue, IrInstruction, IrModule, IrType, Terminator,
+    CodegenError, IrInstruction, IrModule, IrType, PrimitiveValue, Terminator, generate_code,
 };
 use rython_to_ir::lexer::{Lexer, TokenKind};
 use rython_to_ir::parser::Parser;
@@ -73,7 +73,8 @@ fn top_level_global_and_const_parse_but_codegen_returns_error() {
 
 #[test]
 fn parser_rejects_trailing_garbage_after_function() {
-    let tokens = Lexer::create_tokens("fn main() { return; } 123".to_string()).expect("lexing failed");
+    let tokens =
+        Lexer::create_tokens("fn main() { return; } 123".to_string()).expect("lexing failed");
     let mut parser = Parser::new(tokens);
 
     assert!(parser.parse().is_err());
@@ -98,7 +99,11 @@ fn lexer_always_appends_exactly_one_eof_for_valid_ascii_starts() {
 
     for sample in samples {
         let tokens = Lexer::create_tokens(sample.to_string()).expect("lexing failed");
-        assert_eq!(tokens.last().unwrap().kind, TokenKind::Eof, "sample: {sample:?}");
+        assert_eq!(
+            tokens.last().unwrap().kind,
+            TokenKind::Eof,
+            "sample: {sample:?}"
+        );
         assert_eq!(
             tokens
                 .iter()

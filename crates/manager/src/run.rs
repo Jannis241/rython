@@ -41,37 +41,19 @@ impl Default for BuildOptions {
 
 #[derive(Debug)]
 pub enum BuildError {
-    InvalidExtension {
-        path: PathBuf,
-    },
-    Read {
-        path: PathBuf,
-        source: io::Error,
-    },
-    CreateBuildDir {
-        path: PathBuf,
-        source: io::Error,
-    },
-    WriteAsm {
-        path: PathBuf,
-        source: io::Error,
-    },
+    InvalidExtension { path: PathBuf },
+    Read { path: PathBuf, source: io::Error },
+    CreateBuildDir { path: PathBuf, source: io::Error },
+    WriteAsm { path: PathBuf, source: io::Error },
     Lex(LexingError),
     Parse(ParseError),
     IrCodegen(CodegenError),
     AsmCodegen(AsmCodeGenErr),
     NasmSpawn(io::Error),
-    NasmFailed {
-        stderr: String,
-    },
+    NasmFailed { stderr: String },
     LdSpawn(io::Error),
-    LdFailed {
-        stderr: String,
-    },
-    BinarySpawn {
-        path: PathBuf,
-        source: io::Error,
-    },
+    LdFailed { stderr: String },
+    BinarySpawn { path: PathBuf, source: io::Error },
 }
 
 impl fmt::Display for BuildError {

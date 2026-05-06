@@ -12,23 +12,16 @@ pub struct IrModule {
 }
 
 #[derive(Debug, Clone)]
-pub enum IrValue {
-    Primitive(PrimitiveValue),
-    Struct { fields: Vec<(String, IrValue)> },
-    Variant { case_name: String },
-}
-
-#[derive(Debug, Clone)]
 pub struct IrGlobal {
     pub name: String,
     pub ty: IrType,
-    pub value: IrValue,
+    pub value: PrimitiveValue,
 }
 #[derive(Debug, Clone)]
 pub struct IrConstant {
     pub name: String,
     pub ty: IrType,
-    pub value: IrValue,
+    pub value: PrimitiveValue,
 }
 
 #[derive(Debug, Clone)]
@@ -71,86 +64,102 @@ pub struct IrBlock {
     pub terminator: Terminator,
 }
 
+// Grundregel:
+// Eine TempId ist nur ein Name fuer das Ergebnis einer Instruction innerhalb
+// einer Funktion. Je nach Instruction ist dieses Ergebnis entweder ein
+// berechneter Wert oder eine Adresse. Structs und andere zusammengesetzte
+// Werte liegen nicht "in" einer TempId; eine TempId kann aber die Basisadresse
+// eines Speicherbereichs bezeichnen, in dem so ein Wert liegt.
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     PrimitiveConst {
+<<<<<<< HEAD
         temp_id: TempId,       // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
         ty: IrType,            // Typ des konstanten Werts
         value: PrimitiveValue, // der konkrete konstante Wert
+=======
+        temp_id: TempId,       // Wert-Temp: enthaelt danach den konstanten primitiven Wert.
+        ty: IrType,            // Typ des konstanten Werts.
+        value: PrimitiveValue, // Konkreter Wert, der in temp_id materialisiert wird.
+>>>>>>> 8836fba (fhkjdsf)
     },
 
     // Liest den N-ten Argument-Wert beim Funktionseintritt aus dem Aufrufer-Frame.
     // Wird vom IR-Generator am Funktionsanfang fuer jeden Parameter eingefuegt.
     LoadParam {
-        temp_id: TempId, // Ergebnis-Temp, der den Wert des Parameters haelt
-        index: usize,    // 0-basierter Index des Parameters
-        ty: IrType,      // Typ des Parameters
+        temp_id: TempId, // Wert-Temp: enthaelt danach den uebergebenen Parameterwert.
+        index: usize,    // 0-basierter Parameterindex: 0 ist der erste Parameter.
+        ty: IrType,      // Typ des geladenen Parameterwerts.
     },
 
     Alloca {
-        temp_id: TempId, // Ergebnis-Temp, der die neu reservierte Adresse bezeichnet
-        ty: IrType,      // Typ des Werts, der an dieser Adresse gespeichert werden darf
+        temp_id: TempId, // Adress-Temp: enthaelt danach die Basisadresse des reservierten Speicherplatzes.
+        ty: IrType,      // Typ des Werts, der an dieser Adresse gespeichert werden darf.
     },
 
     Load {
-        temp_id: TempId, // Ergebnis-Temp, in dem der gelesene Wert landet
-        ty: IrType,      // Typ des gelesenen Werts
-        addr: TempId,    // Adresse, aus der gelesen wird
+        temp_id: TempId, // Wert-Temp: enthaelt danach den Wert, der aus addr gelesen wurde.
+        ty: IrType,      // Typ des gelesenen Werts.
+        addr: TempId,    // Adress-Temp: Speicheradresse, aus der gelesen wird.
     },
 
     Store {
-        ty: IrType,    // Typ des Werts, der geschrieben wird
-        value: TempId, // Wert-Temp, der geschrieben wird
-        addr: TempId,  // Adresse, in die geschrieben wird
+        ty: IrType,    // Typ des Werts, der geschrieben wird.
+        value: TempId, // Wert-Temp: Wert, der nach addr geschrieben wird.
+        addr: TempId,  // Adress-Temp: Speicheradresse, in die geschrieben wird.
     },
 
     Binary {
-        temp_id: TempId, // Ergebnis-Temp der Binary-Operation
-        ty: IrType,      // Typ des Ergebnisses
-        op: IrBinaryOp,  // Operation, z.B. Add oder Eq
-        lhs: TempId,     // linker Operand als Wert-Temp
-        rhs: TempId,     // rechter Operand als Wert-Temp
+        temp_id: TempId, // Wert-Temp: enthaelt danach das Ergebnis der binaeren Operation.
+        ty: IrType,      // Typ von lhs, rhs und Ergebnis.
+        op: IrBinaryOp,  // Operation, z.B. Add oder Eq.
+        lhs: TempId,     // Wert-Temp: linker Operand.
+        rhs: TempId,     // Wert-Temp: rechter Operand.
     },
 
     // functions
     Call {
-        temp_id: Option<TempId>, // Ergebnis-Temp fuer den Rueckgabewert; None bei void
-        function_name: String,   // Name der aufgerufenen Funktion
-        args: Vec<TempId>,       // Wert-Temps der bereits berechneten Argumente
-        return_type: IrType,     // Rueckgabetyp der Funktion
+        temp_id: Option<TempId>, // Wert-Temp fuer den Rueckgabewert; None, wenn die Funktion void liefert.
+        function_name: String,   // Name der aufgerufenen Funktion.
+        args: Vec<TempId>,       // Wert-Temps der bereits berechneten Argumente.
+        return_type: IrType,     // Rueckgabetyp der Funktion.
     },
     GlobalAddr {
-        temp_id: TempId,
-        name: String,
-        ty: IrType,
+        temp_id: TempId, // Adress-Temp: enthaelt danach die Adresse des globalen Symbols.
+        name: String,    // Name der globalen Variable oder Konstante.
+        ty: IrType,      // Typ des Werts, der an dieser globalen Adresse liegt.
     },
     Asm {
-        code: String,
+        code: String, // Roher Assembly-Code, der unveraendert in den Output geschrieben wird.
     },
 
     Unary {
-        temp_id: TempId, // Ergebnis-Temp der Unary-Operation
-        ty: IrType,      // Typ des Ergebnisses
-        op: IrUnaryOp,   // Operation, z.B. Neg oder Not
-        value: TempId,   // Operand als Wert-Temp
+        temp_id: TempId, // Wert-Temp: enthaelt danach das Ergebnis der unaeren Operation.
+        ty: IrType,      // Typ von value und Ergebnis.
+        op: IrUnaryOp,   // Operation, z.B. Neg oder Not.
+        value: TempId,   // Wert-Temp: Operand.
     },
 
     // -------------- variant -----------------------------------
     InitVariant {
-        temp_id: TempId,   // Ergebnis-Temp des erzeugten Variant-Werts
-        ty: IrType,        // Typ der Variant, z.B. Named("Option")
-        case_name: String, // ausgewaehlter Fall, z.B. Some oder None
+        temp_id: TempId, // Wert- oder Adress-Temp des erzeugten Variant-Werts, je nach spaeterem Lowering.
+        ty: IrType,      // Typ der Variant, z.B. Named("Option").
+        case_name: String, // Ausgewaehlter Fall, z.B. Some oder None.
     },
 
     // -------------- structs -----------------------------------
+<<<<<<< HEAD
     InitStruct {
         ty: IrType,                    // Typ des Structs, z.B. Named("Point")
         fields: Vec<(String, TempId)>, // Feldname und Wert-Temp des jeweiligen Feldwerts
     },
+=======
+
+>>>>>>> 8836fba (fhkjdsf)
     GetFieldAddr {
-        temp_id: TempId,    // Ergebnis-Temp, der die Adresse des Feldes bezeichnet
-        base_addr: TempId,  // Adresse des ganzen Structs
-        field_name: String, // Name des Feldes
+        temp_id: TempId, // Adress-Temp: enthaelt danach die Adresse des ausgewaehlten Feldes.
+        base_addr: TempId, // Adress-Temp: Basisadresse des ganzen Struct-Speicherbereichs.
+        field_name: String, // Name des Feldes, dessen Offset berechnet wird.
     },
 }
 
@@ -321,9 +330,9 @@ impl IrGenerator {
         // die eigentlichen statements aus der function in instructions für den entry block machen
         for stmt in &function.body.statements {
             self.gen_stmt(stmt, &mut entry_block)?; // jedes statement aus der function handeln
-                                                    // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
-                                                    // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
-                                                    // werden kann ohne immer etwas returnen zu müssen
+            // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
+            // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
+            // werden kann ohne immer etwas returnen zu müssen
         }
         self.exit_scope();
 
@@ -393,8 +402,8 @@ impl IrGenerator {
                 match return_value {
                     Some(value) => {
                         let (temp_id, ret_t) = self.gen_expr(value, block)?; // Expr handeln -> macht sein eigenes Ding und
-                                                                             // editiert die instructions des blocks. Return gibt nicht das ergebnis der
-                                                                             // expr selber zurück sondern nur die variable also brauchen wir die temp id
+                        // editiert die instructions des blocks. Return gibt nicht das ergebnis der
+                        // expr selber zurück sondern nur die variable also brauchen wir die temp id
                         if (ret_t != self.current_expected_return_type) {
                             return Err(CodegenError::InvalidReturnType(
                                 self.current_expected_return_type.clone(),

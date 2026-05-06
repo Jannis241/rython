@@ -126,10 +126,18 @@ fn assert_load_instruction(
 
 fn assert_const_value(actual: &PrimitiveValue, expected: &PrimitiveValue) {
     match (actual, expected) {
-        (PrimitiveValue::Int(actual), PrimitiveValue::Int(expected)) => assert_eq!(actual, expected),
-        (PrimitiveValue::Float(actual), PrimitiveValue::Float(expected)) => assert_eq!(actual, expected),
-        (PrimitiveValue::Bool(actual), PrimitiveValue::Bool(expected)) => assert_eq!(actual, expected),
-        (PrimitiveValue::Char(actual), PrimitiveValue::Char(expected)) => assert_eq!(actual, expected),
+        (PrimitiveValue::Int(actual), PrimitiveValue::Int(expected)) => {
+            assert_eq!(actual, expected)
+        }
+        (PrimitiveValue::Float(actual), PrimitiveValue::Float(expected)) => {
+            assert_eq!(actual, expected)
+        }
+        (PrimitiveValue::Bool(actual), PrimitiveValue::Bool(expected)) => {
+            assert_eq!(actual, expected)
+        }
+        (PrimitiveValue::Char(actual), PrimitiveValue::Char(expected)) => {
+            assert_eq!(actual, expected)
+        }
         _ => panic!("expected {expected:?}, got {actual:?}"),
     }
 }

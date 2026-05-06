@@ -83,7 +83,6 @@ fn main() -> ExitCode {
             eprintln!("{err}");
             println!("exit code: 1");
             ExitCode::from(1)
-
         }
     }
 }

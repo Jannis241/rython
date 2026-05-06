@@ -2414,7 +2414,6 @@ fn field_access_chains_via_dot() {
     );
 }
 
-
 #[test]
 fn method_call_is_field_access_then_call() {
     let expr = parse_expr_source("obj.method(1, 2)").unwrap();
@@ -2490,7 +2489,6 @@ fn assignment_to_field_is_allowed() {
         },
     );
 }
-
 
 #[test]
 fn compound_assignment_to_field_is_allowed() {

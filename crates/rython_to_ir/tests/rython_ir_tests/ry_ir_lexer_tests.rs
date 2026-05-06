@@ -618,10 +618,7 @@ fn unknown_character_panics() {
 fn identifier_can_start_with_underscore() {
     assert_tokens(
         "_hidden",
-        &[
-            (TokenKind::Ident, "_hidden"),
-            (TokenKind::Eof, "EOF"),
-        ],
+        &[(TokenKind::Ident, "_hidden"), (TokenKind::Eof, "EOF")],
     );
 }
 
@@ -629,10 +626,7 @@ fn identifier_can_start_with_underscore() {
 fn bare_underscore_lexes_as_wildcard_token() {
     assert_tokens(
         "_",
-        &[
-            (TokenKind::Underscore, "_"),
-            (TokenKind::Eof, "EOF"),
-        ],
+        &[(TokenKind::Underscore, "_"), (TokenKind::Eof, "EOF")],
     );
 }
 
