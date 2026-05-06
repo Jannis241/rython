@@ -8,6 +8,25 @@ Für Jesko:
 
 
 
+Errors laut codex:
+1. crates/rython_to_ir/src/codegen.rs:533: StringLiteral erzeugt eine neue TempId, aber keine IR-Instruktion, die diesen Temp
+     wirklich initialisiert. Danach returnt der Terminator trotzdem TempId(0). In Assembly kann das später auf einen nicht
+     reservierten/undefinierten Stack-Slot zugreifen.
+  2. crates/ir_to_assembly/src/codegen.rs:267: Float-Vergleiche (Eq, Ne, Lt, usw.) schreiben das Bool-Ergebnis nach rax, danach
+     wird aber immer xmm0 per movsd gespeichert. Dadurch landet bei Float-Comparisons vermutlich der linke Float-Operand statt
+     0/1 im Ergebnis-Temp.
+  3. crates/rython_to_ir/src/codegen.rs:416: Mehrere return-Statements in einem Block werden weiter generiert, und der letzte
+     Return überschreibt den Terminator. Aktuell bedeutet return 1; return 2; effektiv return 2;, statt nach dem ersten Return
+     abzubrechen oder unreachable Code sauber zu behandeln.
+  4. crates/rython_to_ir/src/codegen.rs:558: void ist als Parameter-Typ erlaubt und wird sogar getestet. Das erzeugt LoadParam/
+     Store für einen Wert, den es semantisch nicht geben sollte.
+  5. crates/rython_to_ir/src/parser.rs:382: Char-Literals können laut Lexer leer sein, aber der Parser macht
+     chars.first().unwrap(). Ein leeres Char-Literal kann dadurch paniken statt einen Parser-Fehler zu liefern.
+  6. crates/rython_to_ir/src/codegen.rs:591: Struct, Variant, GlobalVar und ConstVar werden im IR-Modulmodell schon
+     repräsentiert, aber generate_code gibt dafür aktuell direkt InvalidItem zurück. Das ist eher unvollständige IR-Codegen-
+     Abdeckung als ein Rename-Problem.
+
+
 - insgesamat:
     - errors (msg)
     - funktion overloading!?!?!?!?

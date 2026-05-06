@@ -19,7 +19,7 @@ pub enum IrValue {
      Array(Vec<IrValue>),
      Variant { case_name: String },
      Null,
-     }
+ }
 
 #[derive(Debug, Clone)]
 pub struct IrGlobal {
@@ -140,7 +140,7 @@ pub enum IrInstruction {
         value: TempId,   // Operand als Wert-Temp
     },
 
-    // -------------- array -----------------------------------
+    // -------------- variant -----------------------------------
 
     InitVariant {
         temp_id: TempId,   // Ergebnis-Temp des erzeugten Variant-Werts
