@@ -65,7 +65,6 @@ IrValue::Struct {
 }
 IrValue::Null
 
-
 ---------- IrGlobal ----------
 
 IrGlobal beschreibt eine globale Variable.
@@ -290,9 +289,8 @@ Aktuelle Varianten:
     Inline-Assembly innerhalb einer Funktion.
 
 - InitVariant { temp_id: TempId, ty: IrType, case_name: String }
-    Erzeugt einen Variant-Wert mit einem bestimmten Case.
-    ty ist normalerweise ein benannter Typ, z.B. IrType::Named("Option").
 
+    we
 - InitArray {
       temp_id: TempId,
       element_type: IrType,
@@ -301,6 +299,15 @@ Aktuelle Varianten:
     Erzeugt einen Array-Wert.
     elements sind die TempIds der einzelnen Elementwerte.
 
+    [3, 3, 5, 6]
+    %2 = Array {start: 0, 0}
+    %2.init_start()
+    %2.push_element(3)
+    %2.push_element(3)
+    %2.push_element(5)
+    %2.push_element(6)
+
+    weg
 - GetElementAddr { temp_id: TempId, base_addr: TempId, index: TempId }
     Liefert die Adresse eines Array-Elements.
     base_addr ist die Adresse des Arrays.
@@ -414,6 +421,7 @@ Varianten:
     64-bit Float.
 
 - Named(String)
+    struct oder variant
     Benannter Typ fuer eigene Typen oder spezielle Typen wie "string".
 
 - Pointer(Box<IrType>)
