@@ -148,19 +148,6 @@ pub enum IrInstruction {
         case_name: String, // ausgewaehlter Fall, z.B. Some oder None
     },
 
-    // -------------- array -----------------------------------
-
-    InitArray {
-        temp_id: TempId,       // Ergebnis-Temp des erzeugten Array-Werts
-        element_type: IrType,  // Typ der Array-Elemente
-        elements: Vec<TempId>, // Wert-Temps der Elemente
-    },
-
-    GetElementAddr {
-        temp_id: TempId,   // Ergebnis-Temp, der die Adresse des Elements bezeichnet
-        base_addr: TempId, // Adresse des Arrays
-        index: TempId,     // Wert-Temp des Index
-    },
 
     // -------------- structs -----------------------------------
 

@@ -290,30 +290,6 @@ Aktuelle Varianten:
 
 - InitVariant { temp_id: TempId, ty: IrType, case_name: String }
 
-    we
-- InitArray {
-      temp_id: TempId,
-      element_type: IrType,
-      elements: Vec<TempId>,
-  }
-    Erzeugt einen Array-Wert.
-    elements sind die TempIds der einzelnen Elementwerte.
-
-    [3, 3, 5, 6]
-    %2 = Array {start: 0, 0}
-    %2.init_start()
-    %2.push_element(3)
-    %2.push_element(3)
-    %2.push_element(5)
-    %2.push_element(6)
-
-    weg
-- GetElementAddr { temp_id: TempId, base_addr: TempId, index: TempId }
-    Liefert die Adresse eines Array-Elements.
-    base_addr ist die Adresse des Arrays.
-    index ist ein Wert-Temp fuer den Index.
-    temp_id bezeichnet danach die Elementadresse.
-
 - InitStruct {
       temp_id: TempId,
       ty: IrType,
