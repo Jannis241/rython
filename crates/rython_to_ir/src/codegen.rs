@@ -13,10 +13,10 @@ pub struct IrModule {
 
 #[derive(Debug, Clone)]
 pub enum IrValue {
-     Primitive(PrimitiveValue),
-     Struct { fields: Vec<(String, IrValue)> },
-     Variant { case_name: String },
- }
+    Primitive(PrimitiveValue),
+    Struct { fields: Vec<(String, IrValue)> },
+    Variant { case_name: String },
+}
 
 #[derive(Debug, Clone)]
 pub struct IrGlobal {
@@ -64,7 +64,6 @@ pub struct IrFunction {
     pub blocks: Vec<IrBlock>,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct IrBlock {
     pub label: String, // z.B entry:
@@ -75,8 +74,8 @@ pub struct IrBlock {
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     PrimitiveConst {
-        temp_id: TempId,   // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
-        ty: IrType,        // Typ des konstanten Werts
+        temp_id: TempId,       // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
+        ty: IrType,            // Typ des konstanten Werts
         value: PrimitiveValue, // der konkrete konstante Wert
     },
 
@@ -129,7 +128,6 @@ pub enum IrInstruction {
         code: String,
     },
 
-
     Unary {
         temp_id: TempId, // Ergebnis-Temp der Unary-Operation
         ty: IrType,      // Typ des Ergebnisses
@@ -138,18 +136,14 @@ pub enum IrInstruction {
     },
 
     // -------------- variant -----------------------------------
-
     InitVariant {
         temp_id: TempId,   // Ergebnis-Temp des erzeugten Variant-Werts
         ty: IrType,        // Typ der Variant, z.B. Named("Option")
         case_name: String, // ausgewaehlter Fall, z.B. Some oder None
     },
 
-
     // -------------- structs -----------------------------------
-
     InitStruct {
-        temp_id: TempId,               // Ergebnis-Temp des erzeugten Struct-Werts
         ty: IrType,                    // Typ des Structs, z.B. Named("Point")
         fields: Vec<(String, TempId)>, // Feldname und Wert-Temp des jeweiligen Feldwerts
     },
@@ -522,7 +516,6 @@ impl IrGenerator {
                 // Fields: length, start
                 // length = value.len
                 // start = 0,
-
 
                 // jesko yapping
                 // block.instructions.push(value);
