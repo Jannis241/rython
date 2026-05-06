@@ -142,14 +142,6 @@ pub enum IrInstruction {
     },
 
     // -------------- structs -----------------------------------
-<<<<<<< HEAD
-    InitStruct {
-        ty: IrType,                    // Typ des Structs, z.B. Named("Point")
-        fields: Vec<(String, TempId)>, // Feldname und Wert-Temp des jeweiligen Feldwerts
-    },
-=======
-
->>>>>>> 8836fba (fhkjdsf)
     GetFieldAddr {
         temp_id: TempId, // Adress-Temp: enthaelt danach die Adresse des ausgewaehlten Feldes.
         base_addr: TempId, // Adress-Temp: Basisadresse des ganzen Struct-Speicherbereichs.
@@ -228,6 +220,9 @@ pub struct Variable {
     ty: IrType,
     addr: TempId,
 }
+
+
+
 #[derive(Debug, Clone)]
 pub struct Scope {
     symbols: HashMap<String, Variable>, // name, variable
