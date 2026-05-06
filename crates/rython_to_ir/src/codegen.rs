@@ -73,15 +73,9 @@ pub struct IrBlock {
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     PrimitiveConst {
-<<<<<<< HEAD
-        temp_id: TempId,       // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
-        ty: IrType,            // Typ des konstanten Werts
-        value: PrimitiveValue, // der konkrete konstante Wert
-=======
         temp_id: TempId,       // Wert-Temp: enthaelt danach den konstanten primitiven Wert.
         ty: IrType,            // Typ des konstanten Werts.
         value: PrimitiveValue, // Konkreter Wert, der in temp_id materialisiert wird.
->>>>>>> 8836fba (fhkjdsf)
     },
 
     // Liest den N-ten Argument-Wert beim Funktionseintritt aus dem Aufrufer-Frame.
