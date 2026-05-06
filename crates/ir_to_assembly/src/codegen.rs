@@ -5,7 +5,7 @@ use std::{collections::HashMap, fmt::Write};
 pub enum AsmCodeGenErr {
     TypeNotFound(String),
     MultipleTypesFound(String),
-    UnsupportedConstValue(ConstValue),
+    UnsupportedIrValue(IrValue),
     UnsupportedInstruction(String),
     UnsupportedFloatOp(IrBinaryOp),
 }
@@ -194,25 +194,22 @@ impl AsmCodeGen {
 
     fn generate_instruction(&mut self, instruction: IrInstruction) -> Result<(), AsmCodeGenErr> {
         match instruction {
-            IrInstruction::Const {
+            IrInstruction::PrimitiveConst {
                 temp_id,
                 ty: _,
                 value,
             } => {
                 let imm = match value {
-                    ConstValue::Int(i) => i as u64,
-                    ConstValue::Bool(b) => {
+                    PrimitiveValue::Int(i) => i as u64,
+                    PrimitiveValue::Bool(b) => {
                         if b {
                             1
                         } else {
                             0
                         }
                     }
-                    ConstValue::Null => 0,
-                    ConstValue::Char(c) => c as u64,
-                    ConstValue::Float(f) => f.to_bits(),
-                    //TODO:
-                    other => return Err(AsmCodeGenErr::UnsupportedConstValue(other)),
+                    PrimitiveValue::Char(c) => c as u64,
+                    PrimitiveValue::Float(f) => f.to_bits(),
                 };
                 emit!(self, "    mov rax, {}\n", imm);
                 emit!(self, "    mov {}, rax\n", self.temp_loc(temp_id));
@@ -446,23 +443,24 @@ impl AsmCodeGen {
         format!("[rbp - {}]", (temp_id.0 + 1) * 8)
     }
 
-    pub fn const_value_into_string(&self, value: ConstValue) -> Result<String, AsmCodeGenErr> {
+    pub fn const_value_into_string(&self, value: IrValue) -> Result<String, AsmCodeGenErr> {
         match value {
-            ConstValue::Int(i) => Ok(i.to_string()),
-            ConstValue::Bool(val) => Ok(if val {
+            IrValue::Primitive(PrimitiveValue::Int(i)) => Ok(i.to_string()),
+            IrValue::Primitive(PrimitiveValue::Bool(val)) => Ok(if val {
                 "1".to_string()
             } else {
                 "0".to_string()
             }),
-            ConstValue::Null => Ok("0".to_string()),
-            ConstValue::Char(c) => Ok((c as u32).to_string()),
-            ConstValue::Float(f) => Ok(f.to_bits().to_string()),
+            IrValue::Null => Ok("0".to_string()),
+            IrValue::Primitive(PrimitiveValue::Char(c)) => Ok((c as u32).to_string()),
+            IrValue::Primitive(PrimitiveValue::Float(f)) => Ok(f.to_bits().to_string()),
             // String braucht ein Label in .rodata + db-Direktive plus Escaping --
             // wird vorerst nicht unterstuetzt. Struct/Variant-Konstanten bekommen
             // erst Support, wenn aggregierte Werte allgemein gehen.
-            ConstValue::String(_) | ConstValue::Struct { .. } | ConstValue::Variant { .. } => {
-                Err(AsmCodeGenErr::UnsupportedConstValue(value))
-            }
+            IrValue::String(_)
+            | IrValue::Struct { .. }
+            | IrValue::Array(_)
+            | IrValue::Variant { .. } => Err(AsmCodeGenErr::UnsupportedIrValue(value)),
         }
     }
 
@@ -478,12 +476,12 @@ impl AsmCodeGen {
     }
 
     pub fn get_named_size_in_qds(&self, named_typ_name: String) -> Result<usize, AsmCodeGenErr> {
-        let mut matching_type: Option<&IrTypeDef> = None;
+        let mut matching_type: Option<&IrTypeDefinition> = None;
 
         for typ in &self.input.types {
             let name = match typ {
-                IrTypeDef::Struct { name, .. } => name,
-                IrTypeDef::Variant { name, .. } => name,
+                IrTypeDefinition::Struct { name, .. } => name,
+                IrTypeDefinition::Variant { name, .. } => name,
             };
             if name == &named_typ_name {
                 if matching_type.is_some() {
@@ -498,14 +496,14 @@ impl AsmCodeGen {
         };
 
         let qds = match matching_type_def {
-            IrTypeDef::Struct { fields, .. } => {
+            IrTypeDefinition::Struct { fields, .. } => {
                 let mut total_qds = 0;
                 for field in fields {
                     total_qds += self.get_type_size_in_qds(field.ty.clone())?;
                 }
                 total_qds
             }
-            IrTypeDef::Variant { .. } => 1,
+            IrTypeDefinition::Variant { .. } => 1,
         };
 
         Ok(qds)
@@ -518,7 +516,7 @@ fn strip_trailing_colon(s: &str) -> String {
 
 fn result_temp(instr: &IrInstruction) -> Option<TempId> {
     match instr {
-        IrInstruction::Const { temp_id, .. }
+        IrInstruction::PrimitiveConst { temp_id, .. }
         | IrInstruction::LoadParam { temp_id, .. }
         | IrInstruction::Alloca { temp_id, .. }
         | IrInstruction::Load { temp_id, .. }

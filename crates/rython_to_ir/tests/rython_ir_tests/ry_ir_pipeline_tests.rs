@@ -1,7 +1,7 @@
 use std::panic::{self, AssertUnwindSafe};
 
 use rython_to_ir::codegen::{
-    generate_code, CodegenError, ConstValue, IrInstruction, IrModule, IrType, Terminator,
+    generate_code, CodegenError, PrimitiveValue, IrInstruction, IrModule, IrType, Terminator,
 };
 use rython_to_ir::lexer::{Lexer, TokenKind};
 use rython_to_ir::parser::Parser;
@@ -40,9 +40,9 @@ fn supported_function_source_program_generates_expected_ir_shape() {
     assert_eq!(module.functions[0].blocks[0].instructions.len(), 1);
     assert!(matches!(
         module.functions[0].blocks[0].instructions[0],
-        IrInstruction::Const {
+        IrInstruction::PrimitiveConst {
             ty: IrType::I64,
-            value: ConstValue::Int(42),
+            value: PrimitiveValue::Int(42),
             ..
         }
     ));

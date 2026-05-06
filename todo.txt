@@ -35,6 +35,8 @@ ir_code_gen:
 
     Mehrere Blöcke machen für if while usw
 
+    globale funktionen??? pub keyword????? wie??????
+
     constans
     globals
     types:

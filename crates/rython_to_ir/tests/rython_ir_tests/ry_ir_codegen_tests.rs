@@ -66,10 +66,10 @@ fn assert_const_instruction(
     instruction: &IrInstruction,
     expected_temp: &str,
     expected_type: &IrType,
-    expected_value: &ConstValue,
+    expected_value: &PrimitiveValue,
 ) {
     match instruction {
-        IrInstruction::Const { temp_id, ty, value } => {
+        IrInstruction::PrimitiveConst { temp_id, ty, value } => {
             assert_eq!(temp_debug(temp_id), expected_temp);
             assert_ir_type(ty, expected_type);
             assert_const_value(value, expected_value);
@@ -124,14 +124,12 @@ fn assert_load_instruction(
     }
 }
 
-fn assert_const_value(actual: &ConstValue, expected: &ConstValue) {
+fn assert_const_value(actual: &PrimitiveValue, expected: &PrimitiveValue) {
     match (actual, expected) {
-        (ConstValue::Int(actual), ConstValue::Int(expected)) => assert_eq!(actual, expected),
-        (ConstValue::Float(actual), ConstValue::Float(expected)) => assert_eq!(actual, expected),
-        (ConstValue::Bool(actual), ConstValue::Bool(expected)) => assert_eq!(actual, expected),
-        (ConstValue::String(actual), ConstValue::String(expected)) => assert_eq!(actual, expected),
-        (ConstValue::Char(actual), ConstValue::Char(expected)) => assert_eq!(actual, expected),
-        (ConstValue::Null, ConstValue::Null) => {}
+        (PrimitiveValue::Int(actual), PrimitiveValue::Int(expected)) => assert_eq!(actual, expected),
+        (PrimitiveValue::Float(actual), PrimitiveValue::Float(expected)) => assert_eq!(actual, expected),
+        (PrimitiveValue::Bool(actual), PrimitiveValue::Bool(expected)) => assert_eq!(actual, expected),
+        (PrimitiveValue::Char(actual), PrimitiveValue::Char(expected)) => assert_eq!(actual, expected),
         _ => panic!("expected {expected:?}, got {actual:?}"),
     }
 }
@@ -226,16 +224,16 @@ fn function_parameters_and_return_type_are_converted_to_ir_types() {
     assert_eq!(function.parameter.len(), 5);
 
     assert_eq!(function.parameter[0].name, "i");
-    assert_ir_type(&function.parameter[0].param_type, &IrType::I64);
+    assert_ir_type(&function.parameter[0].ty, &IrType::I64);
     assert_eq!(function.parameter[1].name, "f");
-    assert_ir_type(&function.parameter[1].param_type, &IrType::F64);
+    assert_ir_type(&function.parameter[1].ty, &IrType::F64);
     assert_eq!(function.parameter[2].name, "b");
-    assert_ir_type(&function.parameter[2].param_type, &IrType::Bool);
+    assert_ir_type(&function.parameter[2].ty, &IrType::Bool);
     assert_eq!(function.parameter[3].name, "v");
-    assert_ir_type(&function.parameter[3].param_type, &IrType::Void);
+    assert_ir_type(&function.parameter[3].ty, &IrType::Void);
     assert_eq!(function.parameter[4].name, "custom");
     assert_ir_type(
-        &function.parameter[4].param_type,
+        &function.parameter[4].ty,
         &IrType::Named("UserType".to_string()),
     );
     assert_ir_type(
@@ -273,7 +271,7 @@ fn int_return_generates_i64_const_and_returns_its_temp() {
         &entry.instructions[0],
         "TempId(0)",
         &IrType::I64,
-        &ConstValue::Int(42),
+        &PrimitiveValue::Int(42),
     );
     assert_ret(&entry.terminator, Some("TempId(0)"));
 }
@@ -296,13 +294,13 @@ fn int_literal_parser_accepts_i64_boundaries_and_negative_values() {
         &entry.instructions[0],
         "TempId(0)",
         &IrType::I64,
-        &ConstValue::Int(i64::MAX),
+        &PrimitiveValue::Int(i64::MAX),
     );
     assert_const_instruction(
         &entry.instructions[1],
         "TempId(1)",
         &IrType::I64,
-        &ConstValue::Int(i64::MIN),
+        &PrimitiveValue::Int(i64::MIN),
     );
     assert_ret(&entry.terminator, Some("TempId(1)"));
 }
@@ -322,7 +320,7 @@ fn float_return_generates_f64_const_and_returns_its_temp() {
         &entry.instructions[0],
         "TempId(0)",
         &IrType::F64,
-        &ConstValue::Float(-3.5),
+        &PrimitiveValue::Float(-3.5),
     );
     assert_ret(&entry.terminator, Some("TempId(0)"));
 }
@@ -343,10 +341,10 @@ fn float_literal_supports_infinity_and_nan_from_rust_parser() {
     assert_eq!(entry.instructions.len(), 2);
 
     match &entry.instructions[0] {
-        IrInstruction::Const {
+        IrInstruction::PrimitiveConst {
             temp_id,
             ty,
-            value: ConstValue::Float(value),
+            value: PrimitiveValue::Float(value),
         } => {
             assert_eq!(temp_debug(temp_id), "TempId(0)");
             assert_ir_type(ty, &IrType::F64);
@@ -356,10 +354,10 @@ fn float_literal_supports_infinity_and_nan_from_rust_parser() {
     }
 
     match &entry.instructions[1] {
-        IrInstruction::Const {
+        IrInstruction::PrimitiveConst {
             temp_id,
             ty,
-            value: ConstValue::Float(value),
+            value: PrimitiveValue::Float(value),
         } => {
             assert_eq!(temp_debug(temp_id), "TempId(1)");
             assert_ir_type(ty, &IrType::F64);
@@ -388,19 +386,19 @@ fn bool_returns_generate_bool_consts_for_true_and_false() {
         &entry.instructions[0],
         "TempId(0)",
         &IrType::Bool,
-        &ConstValue::Bool(true),
+        &PrimitiveValue::Bool(true),
     );
     assert_const_instruction(
         &entry.instructions[1],
         "TempId(1)",
         &IrType::Bool,
-        &ConstValue::Bool(false),
+        &PrimitiveValue::Bool(false),
     );
     assert_ret(&entry.terminator, Some("TempId(1)"));
 }
 
 #[test]
-fn string_return_generates_named_string_const_without_losing_content() {
+fn string_return_generates_named_string_temp() {
     let module = unwrap_codegen(generate_code(&[function(
         "main",
         Vec::new(),
@@ -411,13 +409,7 @@ fn string_return_generates_named_string_const_without_losing_content() {
     )]));
 
     let entry = &module.functions[0].blocks[0];
-    assert_eq!(entry.instructions.len(), 1);
-    assert_const_instruction(
-        &entry.instructions[0],
-        "TempId(0)",
-        &IrType::Named("string".to_string()),
-        &ConstValue::String("hello\nworld \"quoted\"".to_string()),
-    );
+    assert_eq!(entry.instructions.len(), 0);
     assert_ret(&entry.terminator, Some("TempId(0)"));
 }
 
@@ -440,19 +432,19 @@ fn temp_ids_increase_inside_a_function_and_terminator_uses_last_return_value() {
         &entry.instructions[0],
         "TempId(0)",
         &IrType::I64,
-        &ConstValue::Int(1),
+        &PrimitiveValue::Int(1),
     );
     assert_const_instruction(
         &entry.instructions[1],
         "TempId(1)",
         &IrType::I64,
-        &ConstValue::Int(2),
+        &PrimitiveValue::Int(2),
     );
     assert_const_instruction(
         &entry.instructions[2],
         "TempId(2)",
         &IrType::I64,
-        &ConstValue::Int(3),
+        &PrimitiveValue::Int(3),
     );
     assert_ret(&entry.terminator, Some("TempId(2)"));
 }
@@ -482,14 +474,14 @@ fn temp_ids_reset_for_each_generated_function() {
         &first_entry.instructions[0],
         "TempId(0)",
         &IrType::I64,
-        &ConstValue::Int(1),
+        &PrimitiveValue::Int(1),
     );
     assert_ret(&first_entry.terminator, Some("TempId(0)"));
     assert_const_instruction(
         &second_entry.instructions[0],
         "TempId(0)",
         &IrType::I64,
-        &ConstValue::Int(2),
+        &PrimitiveValue::Int(2),
     );
     assert_ret(&second_entry.terminator, Some("TempId(0)"));
 }
@@ -648,7 +640,7 @@ fn let_statement_allocates_initializes_and_stores_variable() {
         &entry.instructions[1],
         "TempId(1)",
         &IrType::I64,
-        &ConstValue::Int(5),
+        &PrimitiveValue::Int(5),
     );
     assert_store_instruction(
         &entry.instructions[2],
@@ -696,7 +688,7 @@ fn declared_variable_expression_loads_from_variable_address() {
         &entry.instructions[1],
         "TempId(1)",
         &IrType::I64,
-        &ConstValue::Int(5),
+        &PrimitiveValue::Int(5),
     );
     assert_store_instruction(
         &entry.instructions[2],
