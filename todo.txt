@@ -9,9 +9,7 @@ Informationen für Jesko:
 Errors laut codex:
 
 Jesko:
-    1. crates/ir_to_assembly/src/codegen.rs:267: Float-Vergleiche (Eq, Ne, Lt, usw.) schreiben das Bool-Ergebnis nach rax, danach
-    wird aber immer xmm0 per movsd gespeichert. Dadurch landet bei Float-Comparisons vermutlich der linke Float-Operand statt
-    0/1 im Ergebnis-Temp.
+
 
     2. crates/rython_to_ir/src/parser.rs:382: Char-Literals können laut Lexer leer sein, aber der Parser macht
     chars.first().unwrap(). Ein leeres Char-Literal kann dadurch paniken statt einen Parser-Fehler zu liefern.
@@ -34,15 +32,16 @@ Jannis
 eigener assembly und linker schreiben?
 
 ir_to_asm:
-    //DONEDONEDONE f64 logik komplett implementen
-    Struct Literals
-    Array Literals
-    String Literals
-    Variant Literals
+    crates/ir_to_assembly/src/codegen.rs:267: Float-Vergleiche (Eq, Ne, Lt, usw.) schreiben das Bool-Ergebnis nach rax, danach
+    wird aber immer xmm0 per movsd gespeichert. Dadurch landet bei Float-Comparisons vermutlich der linke Float-Operand statt
+    0/1 im Ergebnis-Temp.
+    --------
+    Struct Init
+    --------
+    Variant Init
+    --------
     dass man innerhalb innerhalb eines von inline asm werte variable referencen kann außerhalb des asemblais
-
-parser und ast:
-    - eigene scopes mit {} erstellen
+    --------
 
 
 ir_code_gen:

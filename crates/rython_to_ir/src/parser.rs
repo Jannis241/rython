@@ -1031,8 +1031,19 @@ impl Parser {
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
             TokenKind::Asm => self.parse_asm(),
+            TokenKind::LBrace => self.parse_new_scope(),
             _ => self.parse_expr_statement(),
         }
+    }
+
+    fn parse_new_scope(&mut self) -> Result<Stmt, ParseError> {
+        self.expect_current(TokenKind::LBrace)?;
+        self.advance()?;
+        let block = self.parse_block()?;
+        self.expect_current(TokenKind::RBrace)?;
+        self.advance()?;
+
+        Ok(Stmt::Block(block))
     }
 
     fn parse_let(&mut self) -> Result<Stmt, ParseError> {
