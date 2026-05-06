@@ -1,0 +1,389 @@
+---------- IrModule ----------
+
+IrModule ist das Top-Level-Objekt, das am Ende von rython_to_ir an ir_to_assembly
+uebergeben wird.
+
+Es enthaelt:
+
+- inline_assembly: Vec<String>
+    Top-level Inline-Assembly als rohe Strings.
+
+- functions: Vec<IrFunction>
+    Alle Funktionen des Programms.
+
+- globals: Vec<IrGlobal>
+    Globale Variablen.
+    Achtung: Die Struktur existiert, aber der aktuelle Generator fuellt globals noch nicht.
+
+- constants: Vec<IrConstant>
+    Top-level Konstanten.
+    Achtung: Die Struktur existiert, aber der aktuelle Generator fuellt constants noch nicht.
+
+- types: Vec<IrTypeDefinition>
+    Eigene Typdefinitionen, also Structs und Variants.
+    Achtung: Die Struktur existiert, aber der aktuelle Generator fuellt types noch nicht.
+
+
+---------- IrGlobal ----------
+
+IrGlobal beschreibt eine globale Variable.
+
+Felder:
+
+- name: String
+    Name der globalen Variable.
+
+- ty: IrType
+    Typ der globalen Variable.
+
+- value: PrimitiveValue
+    Initialer Wert der globalen Variable.
+    Aktuell nur primitive Werte: Int, Float, Bool, Char.
+
+
+---------- IrConstant ----------
+
+IrConstant beschreibt eine Top-level Konstante.
+
+Felder:
+
+- name: String
+    Name der Konstante.
+
+- ty: IrType
+    Typ der Konstante.
+
+- value: PrimitiveValue
+    Wert der Konstante.
+    Aktuell nur primitive Werte: Int, Float, Bool, Char.
+
+
+---------- IrField ----------
+
+IrField verbindet nur einen Namen mit einem Typ. Es enthaelt keinen Wert.
+
+Felder:
+
+- name: String
+- ty: IrType
+
+IrField wird z.B. fuer Struct-Felder und Funktionsparameter benutzt.
+
+Beispiel:
+
+IrField {
+    name: "a",
+    ty: IrType::I64,
+}
+
+Das bedeutet: Es gibt ein Feld oder einen Parameter namens "a" mit dem Typ I64.
+Der konkrete Laufzeitwert steht nicht in IrField.
+
+
+---------- IrTypeDefinition ----------
+
+IrTypeDefinition beschreibt eigene Typen neben den primitiven IR-Typen.
+
+Varianten:
+
+- Struct { name: String, fields: Vec<IrField> }
+    Definiert einen Struct-Typ.
+
+    Beispiel:
+
+    IrTypeDefinition::Struct {
+        name: "Point",
+        fields: vec![
+            IrField { name: "x", ty: IrType::I64 },
+            IrField { name: "y", ty: IrType::I64 },
+        ],
+    }
+
+- Variant { name: String, cases: Vec<String> }
+    Definiert einen Variant/Enum-aehnlichen Typ.
+
+    Beispiel:
+
+    IrTypeDefinition::Variant {
+        name: "Option",
+        cases: vec!["Some", "None"],
+    }
+
+
+---------- IrFunction ----------
+
+IrFunction beschreibt eine einzelne Funktion in der IR.
+
+Felder:
+
+- name: String
+    Name der Funktion.
+
+- parameter: Vec<IrField>
+    Parameter der Funktion. Jeder Parameter hat einen Namen und einen Typ,
+    aber keinen Wert.
+
+- return_type: IrType
+    Rueckgabetyp laut Funktionssignatur.
+
+- blocks: Vec<IrBlock>
+    Code der Funktion, aufgeteilt in Basic Blocks.
+
+Beispiel:
+
+fn main(a: int, b: int) int {
+    ...
+}
+
+wird ungefaehr:
+
+IrFunction {
+    name: "main",
+    parameter: vec![
+        IrField { name: "a", ty: IrType::I64 },
+        IrField { name: "b", ty: IrType::I64 },
+    ],
+    return_type: IrType::I64,
+    blocks: vec![...],
+}
+
+
+---------- IrBlock ----------
+
+IrBlock ist ein Basic Block: eine lineare Folge von Instructions plus genau ein
+Terminator am Ende.
+
+Felder:
+
+- label: String
+    Name des Blocks, z.B. "entry:".
+
+- instructions: Vec<IrInstruction>
+    Normale Instructions, die nacheinander ausgefuehrt werden.
+
+- terminator: Terminator
+    Abschluss des Blocks, z.B. return, jump oder branch.
+
+Beispiel:
+
+IrBlock {
+    label: "entry:",
+    instructions: vec![
+        IrInstruction::PrimitiveConst { ... },
+        IrInstruction::Alloca { ... },
+        IrInstruction::Store { ... },
+    ],
+    terminator: Terminator::Ret(None),
+}
+
+
+---------- TempId ----------
+
+TempId ist eine temporaere ID innerhalb einer Funktion.
+
+Viele Instructions schreiben ihr Ergebnis in eine TempId. Andere Instructions lesen
+spaeter aus diesen TempIds.
+
+Beispiel:
+
+PrimitiveConst { temp_id: TempId(0), ... }
+
+bedeutet: Der konstante Wert liegt danach unter TempId(0).
+
+Bei Alloca bezeichnet die TempId nicht den Wert selbst, sondern eine Adresse bzw.
+einen reservierten Speicherplatz. Load liest aus so einer Adresse, Store schreibt
+in so eine Adresse.
+
+
+---------- IrInstruction ----------
+
+IrInstruction beschreibt die eigentlichen Operationen im Code. Aus diesen
+Instructions baut ir_to_assembly spaeter Assembly.
+
+Alle aktuellen Varianten:
+
+- PrimitiveConst { temp_id, ty, value }
+    Erzeugt einen primitiven konstanten Wert.
+    value ist ein PrimitiveValue.
+
+- LoadParam { temp_id, index, ty }
+    Laedt den Funktionsparameter mit 0-basiertem Index.
+    Beispiel: index 0 ist der erste Parameter.
+
+- Alloca { temp_id, ty }
+    Reserviert Speicher fuer einen Wert vom Typ ty.
+    temp_id bezeichnet danach die Adresse dieses Speicherplatzes.
+
+- Load { temp_id, ty, addr }
+    Liest einen Wert aus der Adresse addr.
+    Das Ergebnis liegt danach in temp_id.
+
+- Store { ty, value, addr }
+    Schreibt den Wert value in die Adresse addr.
+    Store hat keine Ergebnis-TempId.
+
+- Binary { temp_id, ty, op, lhs, rhs }
+    Fuehrt eine binaere Operation mit lhs und rhs aus.
+    Das Ergebnis liegt danach in temp_id.
+
+- Unary { temp_id, ty, op, value }
+    Fuehrt eine unaere Operation auf value aus.
+    Das Ergebnis liegt danach in temp_id.
+
+- Call { temp_id, function_name, args, return_type }
+    Ruft eine Funktion auf.
+    args sind die bereits berechneten Argumentwerte als TempIds.
+    temp_id ist Some(...) bei einem Rueckgabewert und None bei void.
+
+- GlobalAddr { temp_id, name, ty }
+    Liefert die Adresse einer globalen Variable.
+
+- Asm { code }
+    Inline-Assembly innerhalb einer Funktion.
+
+- InitStruct { temp_id, ty, fields }
+    Erzeugt einen Struct-Wert.
+    fields ist Vec<(String, TempId)>: Feldname plus berechneter Feldwert.
+    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+
+- GetFieldAddr { temp_id, base_addr, field_name }
+    Liefert die Adresse eines Feldes innerhalb eines Structs.
+    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+
+- InitVariant { temp_id, ty, case_name }
+    Erzeugt einen Variant-Wert mit einem bestimmten Case.
+    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+
+- InitArray { temp_id, element_type, elements }
+    Erzeugt einen Array-Wert.
+    elements sind die TempIds der einzelnen Elementwerte.
+    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+
+- GetElementAddr { temp_id, base_addr, index }
+    Liefert die Adresse eines Array-Elements.
+    Achtung: In ir_to_assembly aktuell noch nicht unterstuetzt.
+
+
+---------- IrBinaryOp ----------
+
+Operationen fuer IrInstruction::Binary:
+
+- Add
+- Sub
+- Mul
+- Div
+- Mod
+- Eq
+- Ne
+- Lt
+- Le
+- Gt
+- Ge
+- And
+- Or
+- BitAnd
+- BitOr
+- BitXor
+- Shl
+- Shr
+
+
+---------- IrUnaryOp ----------
+
+Operationen fuer IrInstruction::Unary:
+
+- Neg
+- Not
+- BitNot
+
+
+---------- Terminator ----------
+
+Ein Terminator beendet immer einen IrBlock.
+
+Varianten:
+
+- Ret(Option<TempId>)
+    Return.
+    Ret(Some(temp)) gibt den Wert temp zurueck.
+    Ret(None) ist return void.
+
+- Jump { target: String }
+    Unbedingter Sprung zu einem anderen Block.
+
+- Branch { condition: TempId, then_block: String, else_block: String }
+    Bedingter Sprung.
+    Wenn condition true bzw. ungleich 0 ist, geht es zu then_block,
+    sonst zu else_block.
+
+
+---------- PrimitiveValue ----------
+
+PrimitiveValue haelt konkrete primitive Werte.
+
+Varianten:
+
+- Int(i64)
+- Float(f64)
+- Bool(bool)
+- Char(char)
+
+Beispiele:
+
+PrimitiveValue::Int(3)
+PrimitiveValue::Float(3.5)
+PrimitiveValue::Bool(true)
+PrimitiveValue::Char('a')
+
+
+---------- IrType ----------
+
+IrType beschreibt nur den Typ eines Werts, ohne konkreten Wert.
+
+Varianten:
+
+- I64
+    64-bit Integer.
+
+- F64
+    64-bit Float.
+
+- Bool
+    Boolean.
+
+- Void
+    Kein Rueckgabewert / kein Wert.
+
+- Named(String)
+    Benannter Typ fuer eigene Typen oder spezielle Typen wie "string".
+
+Beispiele:
+
+IrType::I64
+IrType::F64
+IrType::Bool
+IrType::Void
+IrType::Named("string".to_string())
+IrType::Named("Point".to_string())
+
+
+---------- Wichtiger aktueller Stand ----------
+
+Aktuell erzeugt generate_code nur:
+
+- functions
+- inline_assembly
+
+Die Felder globals, constants und types existieren in IrModule bereits, werden vom
+aktuellen Generator aber noch nicht befuellt.
+
+Ausserdem baut ir_to_assembly im aktuellen Repo gerade nicht gegen diese IR, weil
+es noch alte Namen erwartet:
+
+- ConstValue statt PrimitiveValue
+- IrInstruction::Const statt IrInstruction::PrimitiveConst
+- IrTypeDef statt IrTypeDefinition
+- IrType::Pointer, obwohl Pointer aktuell in IrType nicht existiert
+
+Bevor ir_to_assembly stabil auf dieser IR arbeiten kann, muessen diese Namen und
+Typen zwischen rython_to_ir und ir_to_assembly angeglichen werden.

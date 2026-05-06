@@ -8,20 +8,30 @@ pub struct IrModule {
     pub functions: Vec<IrFunction>,
     pub globals: Vec<IrGlobal>,
     pub constants: Vec<IrConstant>,
-    pub types: Vec<IrTypeDef>,
+    pub types: Vec<IrTypeDefinition>,
 }
+
+#[derive(Debug, Clone)]
+pub enum IrValue {
+     Primitive(PrimitiveValue),
+     String(String),
+     Struct { fields: Vec<(String, IrValue)> },
+     Array(Vec<IrValue>),
+     Variant { case_name: String },
+     Null,
+     }
 
 #[derive(Debug, Clone)]
 pub struct IrGlobal {
     pub name: String,
     pub ty: IrType,
-    pub value: ConstValue,
+    pub value: IrValue,
 }
 #[derive(Debug, Clone)]
 pub struct IrConstant {
     pub name: String,
     pub ty: IrType,
-    pub value: ConstValue,
+    pub value: IrValue,
 }
 
 #[derive(Debug, Clone)]
@@ -31,7 +41,7 @@ pub struct IrField {
 }
 
 #[derive(Debug, Clone)]
-pub enum IrTypeDef {
+pub enum IrTypeDefinition {
     Struct { name: String, fields: Vec<IrField> },
     Variant { name: String, cases: Vec<String> },
 }
@@ -51,16 +61,12 @@ impl IrModule {
 #[derive(Debug, Clone)]
 pub struct IrFunction {
     pub name: String,
-    pub parameter: Vec<IrParameter>,
+    pub parameter: Vec<IrField>, // IrField speichert einen name und den typ dazu, bsp: name: a,
+    // type: i32
     pub return_type: IrType,
     pub blocks: Vec<IrBlock>,
 }
 
-#[derive(Debug, Clone)]
-pub struct IrParameter {
-    pub name: String,
-    pub param_type: IrType,
-}
 
 #[derive(Debug, Clone)]
 pub struct IrBlock {
@@ -71,10 +77,10 @@ pub struct IrBlock {
 
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
-    Const {
+    PrimitiveConst {
         temp_id: TempId,   // Ergebnis-Temp, der diesen konstanten Wert bezeichnet
         ty: IrType,        // Typ des konstanten Werts
-        value: ConstValue, // der konkrete konstante Wert
+        value: PrimitiveValue, // der konkrete konstante Wert
     },
 
     // Liest den N-ten Argument-Wert beim Funktionseintritt aus dem Aufrufer-Frame.
@@ -126,11 +132,6 @@ pub enum IrInstruction {
         code: String,
     },
 
-    InitVariant {
-        temp_id: TempId,   // Ergebnis-Temp des erzeugten Variant-Werts
-        ty: IrType,        // Typ der Variant, z.B. Named("Option")
-        case_name: String, // ausgewaehlter Fall, z.B. Some oder None
-    },
 
     Unary {
         temp_id: TempId, // Ergebnis-Temp der Unary-Operation
@@ -138,16 +139,31 @@ pub enum IrInstruction {
         op: IrUnaryOp,   // Operation, z.B. Neg oder Not
         value: TempId,   // Operand als Wert-Temp
     },
+
+    // -------------- array -----------------------------------
+
+    InitVariant {
+        temp_id: TempId,   // Ergebnis-Temp des erzeugten Variant-Werts
+        ty: IrType,        // Typ der Variant, z.B. Named("Option")
+        case_name: String, // ausgewaehlter Fall, z.B. Some oder None
+    },
+
+    // -------------- array -----------------------------------
+
     InitArray {
         temp_id: TempId,       // Ergebnis-Temp des erzeugten Array-Werts
         element_type: IrType,  // Typ der Array-Elemente
         elements: Vec<TempId>, // Wert-Temps der Elemente
     },
+
     GetElementAddr {
         temp_id: TempId,   // Ergebnis-Temp, der die Adresse des Elements bezeichnet
         base_addr: TempId, // Adresse des Arrays
         index: TempId,     // Wert-Temp des Index
     },
+
+    // -------------- structs -----------------------------------
+
     InitStruct {
         temp_id: TempId,               // Ergebnis-Temp des erzeugten Struct-Werts
         ty: IrType,                    // Typ des Structs, z.B. Named("Point")
@@ -196,24 +212,11 @@ pub enum IrUnaryOp {
 pub struct TempId(pub usize);
 
 #[derive(Debug, Clone)]
-pub enum ConstValue {
+pub enum PrimitiveValue {
     Int(i64),
     Float(f64),
     Bool(bool),
     Char(char),
-
-    // todo was hier mit machen???????
-    String(String),
-    Null,
-
-    Struct {
-        type_name: String,
-        fields: Vec<(String, ConstValue)>,
-    },
-    Variant {
-        type_name: String,
-        case_name: String,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -235,8 +238,8 @@ pub enum IrType {
     Bool,
     Void,
     F64,
-    Pointer(Box<IrType>),
     Named(String),
+    Pointer(Box<IrType>),
 }
 #[derive(Debug, Clone)]
 pub struct Variable {
@@ -252,7 +255,7 @@ pub struct Scope {
 #[derive(Debug, Clone)]
 pub struct IrGenerator {
     temp_counter: usize,
-    type_defs: HashMap<String, IrTypeDef>,
+    type_defs: HashMap<String, IrTypeDefinition>,
     current_expected_return_type: IrType,
     scopes: Vec<Scope>, // Scope ist einfach eine hashmap welche die variablen aus dem scope
                         // speichert
@@ -351,9 +354,9 @@ impl IrGenerator {
             parameter: function
                 .params
                 .iter()
-                .map(|param| IrParameter {
+                .map(|param| IrField {
                     name: param.name.clone(),
-                    param_type: Self::convert_to_ir_type(&param.param_type),
+                    ty: Self::convert_to_ir_type(&param.param_type),
                 })
                 .collect(),
             return_type: function
@@ -488,10 +491,10 @@ impl IrGenerator {
                 let val = value
                     .parse()
                     .map_err(|e| CodegenError::InvalidIntLiteral(value.clone()))?;
-                let new_const_instruction = IrInstruction::Const {
+                let new_const_instruction = IrInstruction::PrimitiveConst {
                     temp_id: temp_id,
                     ty: IrType::I64,
-                    value: ConstValue::Int(val),
+                    value: PrimitiveValue::Int(val),
                 };
 
                 block.instructions.push(new_const_instruction);
@@ -504,10 +507,10 @@ impl IrGenerator {
                     .parse()
                     .map_err(|e| CodegenError::InvalidFloatLiteral(value.clone()))?;
 
-                let new_const_instruction = IrInstruction::Const {
+                let new_const_instruction = IrInstruction::PrimitiveConst {
                     temp_id: temp_id,
                     ty: IrType::F64,
-                    value: ConstValue::Float(val),
+                    value: PrimitiveValue::Float(val),
                 };
 
                 block.instructions.push(new_const_instruction);
@@ -517,10 +520,10 @@ impl IrGenerator {
             Expr::BoolLiteral(value) => {
                 let temp_id = self.next_temp_id();
 
-                let new_const_instruction = IrInstruction::Const {
+                let new_const_instruction = IrInstruction::PrimitiveConst {
                     temp_id: temp_id,
                     ty: IrType::Bool,
-                    value: ConstValue::Bool(*value),
+                    value: PrimitiveValue::Bool(*value),
                 };
 
                 block.instructions.push(new_const_instruction);
@@ -530,20 +533,14 @@ impl IrGenerator {
             Expr::StringLiteral(value) => {
                 let temp_id = self.next_temp_id();
 
-                let new_const_instruction = IrInstruction::Const {
-                    temp_id: temp_id,
-                    ty: IrType::Named("string".to_string()),
-                    value: ConstValue::Struct {
-                        type_name: "string".to_string(),
-                        fields: vec![
-                            ("length".to_string(), ConstValue::Int(value.len() as i64)),
-                            ("start".to_string(), ConstValue::Int(0)),
-                        ],
-                    },
-                };
+                // todo: String muss zu einem String struct gemacht werden
+                // struct init callen
+                // Fields: length, start
+                // length = value.len
+                // start = 0,
 
-                block.instructions.push(new_const_instruction);
 
+                // jesko yapping
                 // block.instructions.push(value);
                 // init_start()
                 // push_char(char) -> value chars

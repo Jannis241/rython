@@ -5,11 +5,8 @@ asm {
 
 };
 
-fn main() int{
+fn main(a: int, b: int) int{
 
-    let a: int = 3;
-
-    "string"
 
 
     asm {
@@ -20,7 +17,7 @@ fn main() int{
         syscall
     };
 
-    return a;
+    return a + b;
 }
 
 
