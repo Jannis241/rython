@@ -28,7 +28,7 @@ impl IrGenerator {
                 temp_id: freie_temp_var,
                 ty: ty.clone(),
                 addr,
-            });
+            })?;
 
         Ok((freie_temp_var, ty))
     }
@@ -46,7 +46,7 @@ impl IrGenerator {
         };
 
         self.block_handler
-            .add_instruction_to_current_block(new_const_instruction);
+            .add_instruction_to_current_block(new_const_instruction)?;
         Ok((temp_id, IrType::I64))
     }
 
@@ -64,7 +64,7 @@ impl IrGenerator {
         };
 
         self.block_handler
-            .add_instruction_to_current_block(new_const_instruction);
+            .add_instruction_to_current_block(new_const_instruction)?;
 
         Ok((temp_id, IrType::F64))
     }
@@ -79,7 +79,7 @@ impl IrGenerator {
         };
 
         self.block_handler
-            .add_instruction_to_current_block(new_const_instruction);
+            .add_instruction_to_current_block(new_const_instruction)?;
 
         Ok((temp_id, IrType::Bool))
     }

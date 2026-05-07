@@ -6,6 +6,9 @@ pub enum CodegenError {
     InvalidItem(Item),
     MismatchedTypes(IrType, IrType), // expected type, got
 
+    CodeAfterTerminator, // wenn man zb nach return 1; noch etwas schreibt
+    MissingTerminator(String), // Kein Terminator, String ist der name des labels
+
     UnknownVariable(String),
 
     InvalidIntLiteral(String),

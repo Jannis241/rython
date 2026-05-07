@@ -14,7 +14,7 @@ impl IrGenerator {
             .add_instruction_to_current_block(IrInstruction::Alloca {
                 temp_id: id_for_alloc,
                 ty: ir_type.clone(),
-            });
+            })?;
 
         let (expr_value, expr_type) = self.gen_expr(&l.value)?;
 
@@ -27,7 +27,7 @@ impl IrGenerator {
                 ty: ir_type.clone(),
                 value: expr_value,
                 addr: id_for_alloc,
-            });
+            })?;
 
         self.insert_variable(l.var_name.clone(), ir_type, id_for_alloc);
 
@@ -46,7 +46,7 @@ impl IrGenerator {
                     ));
                 }
                 self.block_handler
-                    .add_terminator(Terminator::Ret(Some(temp_id)));
+                    .add_terminator(Terminator::Ret(Some(temp_id)))?;
 
                 Ok(())
             }
@@ -57,7 +57,7 @@ impl IrGenerator {
                         IrType::Void,
                     ));
                 }
-                self.block_handler.add_terminator(Terminator::Ret(None));
+                self.block_handler.add_terminator(Terminator::Ret(None))?;
                 Ok(())
             }
         }
@@ -67,7 +67,7 @@ impl IrGenerator {
         self.block_handler
             .add_instruction_to_current_block(IrInstruction::Asm {
                 code: asm.asm_code.clone(),
-            });
+            })?;
         Ok(())
     }
 
