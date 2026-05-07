@@ -14,9 +14,9 @@ impl IrGenerator {
             Expr::IntLiteral(value) => self.gen_intliteral(value),
             Expr::FloatLiteral(value) => self.gen_floatliteral(value),
             Expr::BoolLiteral(value) => self.gen_boolliteral(*value),
-            Expr::Unary { op, value } => self.gen_unary_op(op, value),
+            Expr::Unary { op, value } => self.gen_unary_op(op, value), // todo: Operator
             Expr::Assign { target, value } => self.gen_assign(target, value),
-            Expr::BinaryOp {
+            Expr::BinaryOp { // todo: operator
                 lhs,
                 binary_op,
                 rhs,
