@@ -14,6 +14,15 @@ pub enum CodegenError {
 
     UnknownVariable(String),
     UnknownFunction(String),
+    UnknownField(String),
+    UnknownType(String),
+
+    FieldsDontMatch,
+
+    AmbigousVariable(String),
+    AmbigousFunction(String),
+    AmbigousField(String),
+    AmbigousType(String),
 
     InvalidIntLiteral(String),
     InvalidFloatLiteral(String),

@@ -180,6 +180,7 @@ pub enum PrimitiveValue {
     Float(f64),
     Bool(bool),
     Char(char),
+    Pointer(TempId),
 }
 
 #[derive(Debug, Clone)]

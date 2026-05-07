@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::fmt::format;
 
-use crate::ast::{Asm, Function, Item, Param, Type};
+use crate::ast::{Asm, Function, Item, Param, StructField, Type};
 use crate::ir::{
     IrBlock, IrField, IrFunction, IrInstruction, IrModule, IrType, IrTypeDefinition, TempId,
     Terminator,
@@ -12,7 +13,7 @@ use super::scope::Scope;
 #[derive(Debug, Clone)]
 pub struct IrGenerator {
     pub(super) temp_counter: usize,
-    pub(super) type_defs: HashMap<String, IrTypeDefinition>,
+    pub(super) type_defs: Vec<IrTypeDefinition>,
     pub(super) current_expected_return_type: IrType,
     pub(super) scopes: Vec<Scope>,
     pub(super) block_handler: BlockHandler,
@@ -110,7 +111,7 @@ impl IrGenerator {
             temp_counter: 0,
             current_expected_return_type: IrType::Void,
             scopes: Vec::new(),
-            type_defs: HashMap::new(),
+            type_defs: Vec::new(),
             block_handler: BlockHandler::init(),
             functions_return_type: HashMap::new(),
         }
@@ -251,7 +252,7 @@ impl IrGenerator {
                 other => IrType::Named(other.to_string()),
             },
             Type::AnyTrait(_) => {
-                panic!("traits not implemented in code gen")
+                todo!("traits not implemented in code gen")
             }
         }
     }
@@ -284,6 +285,42 @@ pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
 
     for item in items {
         match item {
+            Item::Struct(structdef) => {
+                let mut ir_fields = vec![];
+
+                for parser_field in structdef.fields.iter() {
+                    ir_fields.push(IrField {
+                        name: mangel_struct_var(
+                            structdef.struct_name.clone(),
+                            parser_field.field_name.clone(),
+                        ),
+                        ty: IrGenerator::convert_to_ir_type(&parser_field.field_type),
+                    });
+                }
+
+                let typedef = IrTypeDefinition::Struct {
+                    name: structdef.struct_name.clone(),
+                    fields: ir_fields,
+                };
+
+                generator.type_defs.push(typedef.clone());
+                module.types.push(typedef);
+            }
+            Item::Variant(variantdef) => {
+                let typedef = IrTypeDefinition::Variant {
+                    name: variantdef.variant_name.clone(),
+                    cases: variantdef.cases.clone(),
+                };
+
+                generator.type_defs.push(typedef.clone());
+                module.types.push(typedef);
+            }
+            _ => continue, //wird im zweiten pass gemacht,
+        };
+    }
+
+    for item in items {
+        match item {
             Item::Function(f) => {
                 let func = generator.gen_func_struct(f)?;
                 module.functions.push(func);
@@ -292,8 +329,27 @@ pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
                 let Asm { asm_code } = asm;
                 module.inline_assembly.push(asm_code.clone());
             }
+            Item::Struct(struct_def) => {}
+            Item::Variant(..) => continue, //wurde im ersten pass gemacht
             _ => return Err(CodegenError::InvalidItem(item.clone())),
         };
     }
     return Ok(module);
+}
+
+fn mangel_struct_function(struct_name: String, function_name: String) -> String {
+    format!("mangeld_{}_{}", struct_name, function_name)
+}
+fn mangel_function_var(function_name: String, var_name: String) -> String {
+    format!("mangeld_{}_{}", function_name, var_name)
+}
+fn mangel_struct_var(struct_name: String, var_name: String) -> String {
+    format!("mangeld_{}_{}", struct_name, var_name)
+}
+fn mangel_struct_function_var(
+    struct_name: String,
+    function_name: String,
+    var_name: String,
+) -> String {
+    format!("mangeld_{}_{}_{}", struct_name, function_name, var_name)
 }

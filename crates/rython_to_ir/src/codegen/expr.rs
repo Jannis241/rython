@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::collections::HashMap;
 use std::iter::OnceWith;
 use std::ops::Deref;
 use std::os::linux::net::SocketAddrExt;
@@ -6,7 +7,9 @@ use std::os::linux::net::SocketAddrExt;
 use super::error::CodegenError;
 use super::generator::IrGenerator;
 use crate::ast::{BinaryOp, Expr, Type, UnaryOp};
-use crate::ir::{IrBinaryOp, IrInstruction, IrType, IrUnaryOp, PrimitiveValue, TempId};
+use crate::ir::{
+    IrBinaryOp, IrField, IrInstruction, IrType, IrTypeDefinition, IrUnaryOp, PrimitiveValue, TempId,
+};
 
 impl IrGenerator {
     pub(super) fn gen_expr(&mut self, expr: &Expr) -> Result<(TempId, IrType), CodegenError> {
@@ -23,28 +26,170 @@ impl IrGenerator {
                 binary_op,
                 rhs,
             } => self.gen_binary_op(lhs, binary_op, rhs),
-            Expr::NullLiteral => unimplemented!(""),
+            Expr::NullLiteral => unimplemented!(),
             Expr::CharLiteral(character) => self.gen_charliteral(*character),
             Expr::ListLiteral(inner) => unimplemented!(),
             Expr::Call {
+                // todo: Mehr callee als variable, und generic types
                 callee,
                 type_args,
                 arguments,
             } => self.gen_call(callee, type_args, arguments),
-            Expr::PostFix { Op, value } => unimplemented!(),
-            Expr::StringLiteral(value) => unimplemented!(),
+            Expr::PostFix { Op, value } => unimplemented!(), //operators
+            Expr::StringLiteral(value) => self.gen_string_literal(value),
             Expr::StructLiteral {
                 struct_name,
                 arguments,
-            } => unimplemented!(),
+            } => self.gen_struct_literal(struct_name, arguments),
             Expr::Grouping(inner) => self.gen_grouping(inner),
             Expr::BinaryOpAssign {
+                // todo: operators
                 target,
                 binary_op,
                 value,
             } => self.gen_binary_op_assign(target, binary_op, value),
             Expr::FieldAccess { object, field_name } => unimplemented!(),
         }
+    }
+
+    fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
+        let (temp_id, _) = self.gen_struct_literal(
+            &"string".to_string(),
+            &vec![
+                ("length".to_string(), Expr::IntLiteral("0".to_string())),
+                ("start".to_string(), Expr::IntLiteral("0".to_string())),
+            ],
+        )?; //TODO names überall mangeln
+
+        self.gen_call(Expr::Variable(""), type_args, arguments)
+    }
+
+    fn gen_struct_literal(
+        &mut self,
+        struct_name: &String,
+        arguments: &Vec<(String, Expr)>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let struct_pointer_base_temp_id = self.next_temp_id(); // ist die temp id wo der pointer zu
+                                                               // dem struct gespeichert wird
+        let struct_pointer_base_type =
+            IrType::Pointer(Box::new(IrType::Named(struct_name.clone())));
+
+        let mut first_temp_id = TempId(self.temp_counter + 1); // NICHT self.next_temp_id() callen , weil
+                                                               // sonst es nicht ehrlich die id zum ersten
+                                                               // field ist da in dem for loop unten schon
+                                                               // beim ersten self.next_temp_id() gecallt
+                                                               // wird
+
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::PrimitiveConst {
+                ty: struct_pointer_base_type.clone(),
+                temp_id: struct_pointer_base_temp_id,
+                value: PrimitiveValue::Pointer(first_temp_id),
+            });
+
+        let mut argument_temp_ids: HashMap<&String, TempId> = HashMap::new();
+
+        //erst alle fields allocaten
+        for (field_name, _) in arguments {
+            let arg_temp_id = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::Alloca {
+                    temp_id: arg_temp_id,
+                    ty: self.get_struct_field_typ(struct_name, field_name)?,
+                });
+            argument_temp_ids.insert(field_name, arg_temp_id);
+        }
+
+        //dann checken ob alle fields angegeben wurden
+        if argument_temp_ids
+            .keys()
+            .map(|k| (*k).clone())
+            .collect::<Vec<String>>()
+            != self
+                .get_struct_fields(struct_name)?
+                .iter()
+                .map(|irfld| irfld.name.clone())
+                .collect::<Vec<String>>()
+        {
+            return Err(CodegenError::FieldsDontMatch);
+        }
+
+        //
+        for (field_name, argument_value_expr) in arguments {
+            let (this_field_temp_id, ty) = self.gen_expr(argument_value_expr)?;
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::Store {
+                    ty,
+                    value: this_field_temp_id,
+                    addr: argument_temp_ids
+                        .get(field_name)
+                        .unwrap_or_else(|| unreachable!())
+                        .clone(),
+                });
+        }
+
+        Ok((struct_pointer_base_temp_id, struct_pointer_base_type))
+    }
+
+    fn get_struct_fields(&self, struct_name: &String) -> Result<Vec<IrField>, CodegenError> {
+        let mut found_struct = false;
+
+        let mut typ = None;
+
+        for typedef in self.type_defs.iter() {
+            if let IrTypeDefinition::Struct { name, fields } = typedef {
+                if found_struct {
+                    return Err(CodegenError::AmbigousType(struct_name.clone()));
+                } else {
+                    found_struct = true;
+                    typ = Some(fields.clone());
+                }
+            }
+        }
+        if !found_struct {
+            return Err(CodegenError::UnknownType(struct_name.clone()));
+        }
+        Ok(typ.unwrap_or_else(|| unreachable!()))
+    }
+
+    fn get_struct_field_typ(
+        &self,
+        struct_name: &String,
+        field_name: &String,
+    ) -> Result<IrType, CodegenError> {
+        let mut found_struct = false;
+        let mut found_field = false;
+
+        let mut typ = None;
+
+        for typedef in self.type_defs.iter() {
+            if let IrTypeDefinition::Struct { name, fields } = typedef {
+                if found_struct {
+                    return Err(CodegenError::AmbigousType(struct_name.clone()));
+                } else {
+                    found_struct = true;
+
+                    for field in fields {
+                        if &field.name == field_name {
+                            if found_field {
+                                return Err(CodegenError::AmbigousField(field_name.clone()));
+                            } else {
+                                found_field = true;
+                                typ = Some(field.ty.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !found_struct {
+            return Err(CodegenError::UnknownType(struct_name.clone()));
+        }
+        if !found_field {
+            return Err(CodegenError::UnknownField(field_name.clone()));
+        }
+        Ok(typ.unwrap_or_else(|| unreachable!()))
     }
 
     fn gen_call(
@@ -359,5 +504,9 @@ impl IrGenerator {
             .add_instruction_to_current_block(new_const_instruction)?;
 
         Ok((temp_id, IrType::Bool))
+    }
+
+    fn mangel(&self, input: String) -> String {
+        self.scopes
     }
 }
