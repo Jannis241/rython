@@ -217,6 +217,12 @@ pub enum Expr {
         value: Box<Expr>,
     },
 
+    #[allow(non_snake_case)]
+    PostFix {
+        Op: PostFixOp,
+        value: Box<Expr>,
+    },
+
     FieldAccess {
         object: Box<Expr>,
         field_name: String,
@@ -240,19 +246,10 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone)]
-pub enum Pattern {
-    Wildcard,
-    Variable(String),
-    IntLiteral(String),
-    FloatLiteral(String),
-    BoolLiteral(bool),
-    StringLiteral(String),
-    CharLiteral(char),
-    NullLiteral,
-    VariantCase {
-        variant_name: String,
-        case_name: String,
-    },
+pub enum PostFixOp {
+    Brackets(Box<Expr>),
+    MinusMinus,
+    PlusPlus,
 }
 
 #[derive(Debug, Clone)]

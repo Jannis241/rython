@@ -64,6 +64,8 @@ pub enum TokenKind {
     SlashEq,
     FatArrow,
     ColonColon,
+    PlusPlus,
+    MinusMinus,
 
     EqEq,
     BangEq,
@@ -198,6 +200,9 @@ impl Lexer {
         if self.peek() == Some('=') {
             self.advance();
             Token::new(TokenKind::PlusEq, "+=".to_string())
+        } else if self.peek() == Some('+') {
+            self.advance();
+            Token::new(TokenKind::PlusPlus, "++".to_string())
         } else {
             Token::new(TokenKind::Plus, "+".to_string())
         }
@@ -207,6 +212,9 @@ impl Lexer {
         if self.peek() == Some('=') {
             self.advance();
             Token::new(TokenKind::MinusEq, "-=".to_string())
+        } else if self.peek() == Some('-') {
+            self.advance();
+            Token::new(TokenKind::MinusMinus, "--".to_string())
         } else {
             Token::new(TokenKind::Minus, "-".to_string())
         }

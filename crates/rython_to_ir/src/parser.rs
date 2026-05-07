@@ -324,6 +324,33 @@ impl Parser {
                         field_name,
                     };
                 }
+                TokenKind::LBracket => {
+                    self.advance()?;
+                    let prev = self.allow_struct_literal;
+                    self.allow_struct_literal = true;
+                    let index = self.parse_expr()?;
+                    self.allow_struct_literal = prev;
+                    self.expect_current(TokenKind::RBracket)?;
+                    self.advance()?;
+                    expr = Expr::PostFix {
+                        Op: PostFixOp::Brackets(Box::new(index)),
+                        value: Box::new(expr),
+                    };
+                }
+                TokenKind::PlusPlus => {
+                    self.advance()?;
+                    expr = Expr::PostFix {
+                        Op: PostFixOp::PlusPlus,
+                        value: Box::new(expr),
+                    };
+                }
+                TokenKind::MinusMinus => {
+                    self.advance()?;
+                    expr = Expr::PostFix {
+                        Op: PostFixOp::MinusMinus,
+                        value: Box::new(expr),
+                    };
+                }
                 _ => break,
             }
         }
@@ -423,62 +450,6 @@ impl Parser {
                 Ok(Expr::ListLiteral(elements))
             }
             other => Err(ParseError::UnexpectedExprStart(other)),
-        }
-    }
-
-    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let curr = self.current()?;
-        match curr.kind {
-            TokenKind::Underscore => {
-                self.advance()?;
-                Ok(Pattern::Wildcard)
-            }
-            TokenKind::Int => {
-                self.advance()?;
-                Ok(Pattern::IntLiteral(curr.value))
-            }
-            TokenKind::Float => {
-                self.advance()?;
-                Ok(Pattern::FloatLiteral(curr.value))
-            }
-            TokenKind::True => {
-                self.advance()?;
-                Ok(Pattern::BoolLiteral(true))
-            }
-            TokenKind::False => {
-                self.advance()?;
-                Ok(Pattern::BoolLiteral(false))
-            }
-            TokenKind::Null => {
-                self.advance()?;
-                Ok(Pattern::NullLiteral)
-            }
-            TokenKind::Char => {
-                self.advance()?;
-                let chars: Vec<char> = curr.value.chars().collect();
-                let c = chars.first().copied().unwrap_or('\0');
-                Ok(Pattern::CharLiteral(c))
-            }
-            TokenKind::StringLiteral => {
-                self.advance()?;
-                Ok(Pattern::StringLiteral(curr.value))
-            }
-            TokenKind::Ident => {
-                self.advance()?;
-                if self.current()?.kind == TokenKind::Dot {
-                    self.advance()?;
-                    self.expect_current(TokenKind::Ident)?;
-                    let case_name = self.current()?.value;
-                    self.advance()?;
-                    Ok(Pattern::VariantCase {
-                        variant_name: curr.value,
-                        case_name,
-                    })
-                } else {
-                    Ok(Pattern::Variable(curr.value))
-                }
-            }
-            other => Err(ParseError::InvalidPattern(other)),
         }
     }
 
