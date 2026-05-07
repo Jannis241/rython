@@ -1,10 +1,11 @@
+use std::any::Any;
 use std::iter::OnceWith;
 use std::ops::Deref;
 
 use super::error::CodegenError;
 use super::generator::IrGenerator;
-use crate::ast::{BinaryOp, Expr};
-use crate::ir::{IrBinaryOp, IrInstruction, IrType, PrimitiveValue, TempId};
+use crate::ast::{BinaryOp, Expr, UnaryOp};
+use crate::ir::{IrBinaryOp, IrInstruction, IrType, IrUnaryOp, PrimitiveValue, TempId};
 
 impl IrGenerator {
     pub(super) fn gen_expr(&mut self, expr: &Expr) -> Result<(TempId, IrType), CodegenError> {
@@ -13,6 +14,7 @@ impl IrGenerator {
             Expr::IntLiteral(value) => self.gen_intliteral(value),
             Expr::FloatLiteral(value) => self.gen_floatliteral(value),
             Expr::BoolLiteral(value) => self.gen_boolliteral(*value),
+            Expr::Unary { op, value } => self.gen_unary_op(op,value),
             Expr::BinaryOp {
                 lhs,
                 binary_op,
@@ -20,6 +22,25 @@ impl IrGenerator {
             } => self.gen_binary_op(lhs, binary_op, rhs),
             other => return Err(CodegenError::InvalidExpr(expr.clone())),
         }
+    }
+
+    fn convert_to_ir_unary_op(unary_op: &UnaryOp) -> IrUnaryOp {
+        match unary_op {
+            UnaryOp::Neg => IrUnaryOp::Neg,
+            UnaryOp::Not => IrUnaryOp::Not,
+            UnaryOp::BitNot => IrUnaryOp::BitNot,
+        }
+    }
+
+    fn gen_unary_op(&mut self, unary_op: &UnaryOp, value: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
+
+        let unary_op = Self::convert_to_ir_unary_op(unary_op);
+        let (tmp_id_1, ir_type) = self.gen_expr(value)?;
+
+        let temp_var = self.next_temp_id();
+        let instruction = IrInstruction::Unary { temp_id: temp_var, ty: ir_type.clone(), op: unary_op, value: tmp_id_1 };
+        self.block_handler.add_instruction_to_current_block(instruction)?;
+        return Ok((temp_var, ir_type));
     }
 
     fn get_binary_expr_result_type(
