@@ -14,8 +14,50 @@ pub struct IrGenerator {
     pub(super) temp_counter: usize,
     pub(super) type_defs: HashMap<String, IrTypeDefinition>,
     pub(super) current_expected_return_type: IrType,
-    pub(super) scopes: Vec<Scope>, // Scope ist einfach eine hashmap welche die variablen aus dem scope
-                                   // speichert
+    pub(super) scopes: Vec<Scope>,
+    pub(super) block_handler: BlockHandler,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockHandler {
+    blocks: Vec<IrBlock>,
+    current_block_index: usize,
+}
+
+impl BlockHandler {
+    pub fn init() -> Self {
+        return BlockHandler {
+            blocks: Vec::new(),
+            current_block_index: 0,
+        };
+    }
+
+    pub fn create_new_block(&mut self, name: &str) {
+        self.blocks.push(IrBlock {
+            label: format!("{name}:"),
+            instructions: Vec::new(),
+            terminator: Terminator::Ret(None),
+        });
+    }
+
+    pub fn jump_to_block(&mut self, label: &str) {
+        let label = format!("{label}:");
+        self.current_block_index = self
+            .blocks
+            .iter()
+            .position(|block| block.label == label)
+            .expect("block does not exist");
+    }
+
+    pub fn add_instruction_to_current_block(&mut self, instruction: IrInstruction) {
+        self.blocks[self.current_block_index]
+            .instructions
+            .push(instruction);
+    }
+
+    pub fn add_terminator(&mut self, terminator: Terminator) {
+        self.blocks[self.current_block_index].terminator = terminator;
+    }
 }
 
 impl IrGenerator {
@@ -25,6 +67,7 @@ impl IrGenerator {
             current_expected_return_type: IrType::Void,
             scopes: Vec::new(),
             type_defs: HashMap::new(),
+            block_handler: BlockHandler::init(),
         }
     }
 
@@ -32,60 +75,25 @@ impl IrGenerator {
         &mut self,
         function: &Function,
     ) -> Result<IrFunction, CodegenError> {
+
         self.temp_counter = 0;
-        self.scopes.clear();
-        self.enter_scope();
+
         self.current_expected_return_type = Self::convert_to_ir_type(
             &function
                 .return_type
                 .clone()
                 .unwrap_or(Type::Named("void".to_string())),
         );
-        // Entry block ist erstmal der main block der function und wird leer erstellt
-        let mut entry_block = IrBlock {
-            label: "entry:".to_string(),
-            instructions: Vec::new(),
-            terminator: Terminator::Ret(None), // jede function hat einen terminator wie return,
-                                               // falls es kein return in der eigentlich function gibt ist es einfach ret(none) also
-                                               // return void
-        };
 
-        // Parameter werden wie normale lokale Variablen behandelt: erst eine Stack-Slot
-        // per Alloca holen, dann den eingehenden Argument-Wert per LoadParam einlesen,
-        // dann in den Slot schreiben und unter dem Parameter-Namen ins Scope eintragen.
-        for (index, param) in function.params.iter().enumerate() {
-            let param_ty = Self::convert_to_ir_type(&param.param_type);
+        self.block_handler.create_new_block("entry");
+        self.block_handler.jump_to_block("entry");
 
-            let addr_temp = self.next_temp_id();
-            entry_block.instructions.push(IrInstruction::Alloca {
-                temp_id: addr_temp,
-                ty: param_ty.clone(),
-            });
+        // todo: Parameter handeln
+        // todo: scopes
 
-            let value_temp = self.next_temp_id();
-            entry_block.instructions.push(IrInstruction::LoadParam {
-                temp_id: value_temp,
-                index,
-                ty: param_ty.clone(),
-            });
-
-            entry_block.instructions.push(IrInstruction::Store {
-                ty: param_ty.clone(),
-                value: value_temp,
-                addr: addr_temp,
-            });
-
-            self.insert_variable(param.name.clone(), param_ty, addr_temp);
-        }
-
-        // die eigentlichen statements aus der function in instructions für den entry block machen
         for stmt in &function.body.statements {
-            self.gen_stmt(stmt, &mut entry_block)?; // jedes statement aus der function handeln
-                                                    // entry block wird direkt als mutatable refenrences reingepackt, damit die instructions
-                                                    // oder der terminator bei bedarf direkt in den weiter folgenden funktionen geändert
-                                                    // werden kann ohne immer etwas returnen zu müssen
+            self.gen_stmt(stmt)?;
         }
-        self.exit_scope();
 
         Ok(IrFunction {
             name: function.name.clone(),
@@ -102,13 +110,10 @@ impl IrGenerator {
                 .as_ref()
                 .map(Self::convert_to_ir_type)
                 .unwrap_or(IrType::Void),
-            blocks: vec![entry_block], // Todo: mehrere blöcke ??
+            blocks: self.block_handler.blocks.clone(),
         })
     }
 
-    // Methode wird aufgerufen falls man eine temp id belegen will -> aktuell freie temp id struct
-    // wird erstellt und returnt und der counter wird um 1 erhöht damit dieser wieder bei der nächst
-    // freien temp id ist
     pub(super) fn next_temp_id(&mut self) -> TempId {
         let id = TempId(self.temp_counter);
         self.temp_counter += 1;

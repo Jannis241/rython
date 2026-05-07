@@ -48,8 +48,7 @@ impl IrModule {
 #[derive(Debug, Clone)]
 pub struct IrFunction {
     pub name: String,
-    pub parameter: Vec<IrField>, // IrField speichert einen name und den typ dazu, bsp: name: a,
-    // type: i32
+    pub parameter: Vec<IrField>,
     pub return_type: IrType,
     pub blocks: Vec<IrBlock>,
 }
@@ -58,15 +57,8 @@ pub struct IrFunction {
 pub struct IrBlock {
     pub label: String, // z.B entry:
     pub instructions: Vec<IrInstruction>,
-    pub terminator: Terminator,
+    pub terminator: Terminator
 }
-
-// Grundregel:
-// Eine TempId ist nur ein Name fuer das Ergebnis einer Instruction innerhalb
-// einer Funktion. Je nach Instruction ist dieses Ergebnis entweder ein
-// berechneter Wert oder eine Adresse. Structs und andere zusammengesetzte
-// Werte liegen nicht "in" einer TempId; eine TempId kann aber die Basisadresse
-// eines Speicherbereichs bezeichnen, in dem so ein Wert liegt.
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
     PrimitiveConst {

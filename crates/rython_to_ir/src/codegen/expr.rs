@@ -1,98 +1,86 @@
-use crate::ast::Expr;
-use crate::ir::{IrBlock, IrInstruction, IrType, PrimitiveValue, TempId};
-
 use super::error::CodegenError;
 use super::generator::IrGenerator;
+use crate::ast::Expr;
+use crate::ir::{IrInstruction, IrType, PrimitiveValue, TempId};
 
 impl IrGenerator {
-    pub(super) fn gen_expr(
-        &mut self,
-        expr: &Expr,
-        block: &mut IrBlock,
-    ) -> Result<(TempId, IrType), CodegenError> {
-        // Expr handeln: Instructions in dem Block je nach expression verändern und die temp id
-        // zurück geben wo das ergebnis der expr genau gespeichert wird, damit aufrufende methoden
-        // das nutzen können (wie zb return)
+    pub(super) fn gen_expr(&mut self, expr: &Expr) -> Result<(TempId, IrType), CodegenError> {
         match expr {
-            Expr::Variable(name) => {
-                let freie_temp_var = self.next_temp_id();
-
-                let var = self
-                    .lookup_variable(name)
-                    .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
-
-                block.instructions.push(IrInstruction::Load {
-                    temp_id: freie_temp_var,
-                    ty: var.ty.clone(),
-                    addr: var.addr,
-                });
-
-                Ok((freie_temp_var, var.ty.clone()))
-            }
-            Expr::IntLiteral(value) => {
-                let temp_id = self.next_temp_id();
-
-                let val = value
-                    .parse()
-                    .map_err(|e| CodegenError::InvalidIntLiteral(value.clone()))?;
-                let new_const_instruction = IrInstruction::PrimitiveConst {
-                    temp_id: temp_id,
-                    ty: IrType::I64,
-                    value: PrimitiveValue::Int(val),
-                };
-
-                block.instructions.push(new_const_instruction);
-                return Ok((temp_id, IrType::I64));
-            }
-            Expr::FloatLiteral(value) => {
-                let temp_id = self.next_temp_id();
-
-                let val = value
-                    .parse()
-                    .map_err(|e| CodegenError::InvalidFloatLiteral(value.clone()))?;
-
-                let new_const_instruction = IrInstruction::PrimitiveConst {
-                    temp_id: temp_id,
-                    ty: IrType::F64,
-                    value: PrimitiveValue::Float(val),
-                };
-
-                block.instructions.push(new_const_instruction);
-
-                return Ok((temp_id, IrType::F64));
-            }
-            Expr::BoolLiteral(value) => {
-                let temp_id = self.next_temp_id();
-
-                let new_const_instruction = IrInstruction::PrimitiveConst {
-                    temp_id: temp_id,
-                    ty: IrType::Bool,
-                    value: PrimitiveValue::Bool(*value),
-                };
-
-                block.instructions.push(new_const_instruction);
-
-                return Ok((temp_id, IrType::Bool));
-            }
-            Expr::StringLiteral(value) => {
-                let temp_id = self.next_temp_id();
-
-                // todo: String muss zu einem String struct gemacht werden
-                // struct init callen
-                // Fields: length, start
-                // length = value.len
-                // start = 0,
-
-                // jesko yapping
-                // block.instructions.push(value);
-                // init_start()
-                // push_char(char) -> value chars
-
-                return Ok((temp_id, IrType::Named("string".to_string())));
-            }
-            other => {
-                return Err(CodegenError::InvalidExpr(other.clone()));
-            }
+            Expr::Variable(name) => self.gen_variable(name),
+            Expr::IntLiteral(value) => self.gen_intliteral(value),
+            Expr::FloatLiteral(value) => self.gen_floatliteral(value),
+            Expr::BoolLiteral(value) => self.gen_boolliteral(*value),
+            other => return Err(CodegenError::InvalidExpr(expr.clone())),
         }
+    }
+
+    fn gen_variable(&mut self, name: &str) -> Result<(TempId, IrType), CodegenError> {
+        let freie_temp_var = self.next_temp_id();
+
+        let var = self
+            .lookup_variable(name)
+            .ok_or_else(|| CodegenError::UnknownVariable(name.to_string()))?;
+        let ty = var.ty.clone();
+        let addr = var.addr;
+
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Load {
+                temp_id: freie_temp_var,
+                ty: ty.clone(),
+                addr,
+            });
+
+        Ok((freie_temp_var, ty))
+    }
+
+    fn gen_intliteral(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
+        let temp_id = self.next_temp_id();
+
+        let val = value
+            .parse()
+            .map_err(|_| CodegenError::InvalidIntLiteral(value.to_string()))?;
+        let new_const_instruction = IrInstruction::PrimitiveConst {
+            temp_id,
+            ty: IrType::I64,
+            value: PrimitiveValue::Int(val),
+        };
+
+        self.block_handler
+            .add_instruction_to_current_block(new_const_instruction);
+        Ok((temp_id, IrType::I64))
+    }
+
+    fn gen_floatliteral(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
+        let temp_id = self.next_temp_id();
+
+        let val = value
+            .parse()
+            .map_err(|_| CodegenError::InvalidFloatLiteral(value.to_string()))?;
+
+        let new_const_instruction = IrInstruction::PrimitiveConst {
+            temp_id,
+            ty: IrType::F64,
+            value: PrimitiveValue::Float(val),
+        };
+
+        self.block_handler
+            .add_instruction_to_current_block(new_const_instruction);
+
+        Ok((temp_id, IrType::F64))
+    }
+
+    fn gen_boolliteral(&mut self, value: bool) -> Result<(TempId, IrType), CodegenError> {
+        let temp_id = self.next_temp_id();
+
+        let new_const_instruction = IrInstruction::PrimitiveConst {
+            temp_id,
+            ty: IrType::Bool,
+            value: PrimitiveValue::Bool(value),
+        };
+
+        self.block_handler
+            .add_instruction_to_current_block(new_const_instruction);
+
+        Ok((temp_id, IrType::Bool))
     }
 }
