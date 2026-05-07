@@ -30,10 +30,35 @@ impl IrGenerator {
         if lhs != rhs {
             return Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone()));
         }
-        match (lhs, op, lhs) {
-            (IrType::I64, BinaryOp::Lt, IrType::I64) => return Ok(IrType::Bool),
-
-            other => todo!(),
+        match op {
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => match lhs {
+                IrType::I64 | IrType::F64 => Ok(lhs.clone()),
+                _ => Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone())),
+            },
+            BinaryOp::Mod => match lhs {
+                IrType::I64 => Ok(IrType::I64),
+                _ => Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone())),
+            },
+            BinaryOp::Eq | BinaryOp::Ne => match lhs {
+                IrType::Void => Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone())),
+                _ => Ok(IrType::Bool),
+            },
+            BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => match lhs {
+                IrType::I64 | IrType::F64 => Ok(IrType::Bool),
+                _ => Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone())),
+            },
+            BinaryOp::And | BinaryOp::Or => match lhs {
+                IrType::Bool => Ok(IrType::Bool),
+                _ => Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone())),
+            },
+            BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Shl
+            | BinaryOp::Shr => match lhs {
+                IrType::I64 => Ok(IrType::I64),
+                _ => Err(CodegenError::InvalidBinaryOp(lhs.clone(), rhs.clone())),
+            },
         }
     }
 
@@ -69,10 +94,23 @@ impl IrGenerator {
     fn convert_to_ir_binary_op(binary_op: &BinaryOp) -> IrBinaryOp {
         match binary_op {
             BinaryOp::Add => return IrBinaryOp::Add,
-            BinaryOp::Lt => return IrBinaryOp::Lt,
+            BinaryOp::Sub => return IrBinaryOp::Sub,
+            BinaryOp::Mul => return IrBinaryOp::Mul,
+            BinaryOp::Div => return IrBinaryOp::Div,
+            BinaryOp::Mod => return IrBinaryOp::Mod,
             BinaryOp::Eq => return IrBinaryOp::Eq,
             BinaryOp::Ne => return IrBinaryOp::Ne,
-            other => todo!()
+            BinaryOp::Lt => return IrBinaryOp::Lt,
+            BinaryOp::Le => return IrBinaryOp::Le,
+            BinaryOp::Gt => return IrBinaryOp::Gt,
+            BinaryOp::Ge => return IrBinaryOp::Ge,
+            BinaryOp::And => return IrBinaryOp::And,
+            BinaryOp::Or => return IrBinaryOp::Or,
+            BinaryOp::BitAnd => return IrBinaryOp::BitAnd,
+            BinaryOp::BitOr => return IrBinaryOp::BitOr,
+            BinaryOp::BitXor => return IrBinaryOp::BitXor,
+            BinaryOp::Shl => return IrBinaryOp::Shl,
+            BinaryOp::Shr => return IrBinaryOp::Shr,
         }
     }
 
