@@ -1,4 +1,5 @@
 fn main(a: int, b: int) int {
 
-    return a+b;
+    let x:int = a - 5 / b + 3;
+    return a+x-5*b;
 }

@@ -14,7 +14,8 @@ impl IrGenerator {
             Expr::IntLiteral(value) => self.gen_intliteral(value),
             Expr::FloatLiteral(value) => self.gen_floatliteral(value),
             Expr::BoolLiteral(value) => self.gen_boolliteral(*value),
-            Expr::Unary { op, value } => self.gen_unary_op(op,value),
+            Expr::Unary { op, value } => self.gen_unary_op(op, value),
+            Expr::Assign { target, value } => self.gen_assign(target, value),
             Expr::BinaryOp {
                 lhs,
                 binary_op,
@@ -24,6 +25,14 @@ impl IrGenerator {
         }
     }
 
+    fn gen_assign(
+        &self,
+        target: &Box<Expr>,
+        value: &Box<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        todo!()
+    }
+
     fn convert_to_ir_unary_op(unary_op: &UnaryOp) -> IrUnaryOp {
         match unary_op {
             UnaryOp::Neg => IrUnaryOp::Neg,
@@ -31,15 +40,48 @@ impl IrGenerator {
             UnaryOp::BitNot => IrUnaryOp::BitNot,
         }
     }
+    fn check_unary_op_type(
+        op: &UnaryOp,
+        value_type: &IrType,
+    ) -> Result<(), CodegenError> {
+        match op {
+            UnaryOp::Neg => match value_type {
+                IrType::I64 | IrType::F64 => Ok(()),
+                _ => Err(CodegenError::InvalidUnaryOp(value_type.clone())),
+            },
 
-    fn gen_unary_op(&mut self, unary_op: &UnaryOp, value: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
+            UnaryOp::Not => match value_type {
+                IrType::Bool => Ok(()),
+                _ => Err(CodegenError::InvalidUnaryOp(value_type.clone())),
+            },
 
-        let unary_op = Self::convert_to_ir_unary_op(unary_op);
+            UnaryOp::BitNot => match value_type {
+                IrType::I64 => Ok(()),
+                _ => Err(CodegenError::InvalidUnaryOp(value_type.clone())),
+            },
+        }
+    }
+
+    fn gen_unary_op(
+        &mut self,
+        unary_op: &UnaryOp,
+        value: &Box<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+
         let (tmp_id_1, ir_type) = self.gen_expr(value)?;
 
+        Self::check_unary_op_type(unary_op, &ir_type);
+        let ir_unary_op = Self::convert_to_ir_unary_op(unary_op);
+
         let temp_var = self.next_temp_id();
-        let instruction = IrInstruction::Unary { temp_id: temp_var, ty: ir_type.clone(), op: unary_op, value: tmp_id_1 };
-        self.block_handler.add_instruction_to_current_block(instruction)?;
+        let instruction = IrInstruction::Unary {
+            temp_id: temp_var,
+            ty: ir_type.clone(),
+            op: ir_unary_op,
+            value: tmp_id_1,
+        };
+        self.block_handler
+            .add_instruction_to_current_block(instruction)?;
         return Ok((temp_var, ir_type));
     }
 
