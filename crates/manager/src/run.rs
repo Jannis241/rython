@@ -1,6 +1,6 @@
 use crate::read_file;
 use ir_to_assembly::codegen as asmcodegen;
-use ir_to_assembly::codegen::AsmCodeGenErr;
+// use ir_to_assembly::codegen::AsmCodeGenErr;
 use rython_to_ir::codegen::CodegenError;
 use rython_to_ir::lexer::LexingError;
 use rython_to_ir::parser::ParseError;
@@ -48,7 +48,7 @@ pub enum BuildError {
     Lex(LexingError),
     Parse(ParseError),
     IrCodegen(CodegenError),
-    AsmCodegen(AsmCodeGenErr),
+    // AsmCodegen(AsmCodeGenErr),
     NasmSpawn(io::Error),
     NasmFailed { stderr: String },
     LdSpawn(io::Error),
@@ -74,7 +74,7 @@ impl fmt::Display for BuildError {
             BuildError::Lex(e) => write!(f, "[lexer] {e:?}"),
             BuildError::Parse(e) => write!(f, "[parser] {e:?}"),
             BuildError::IrCodegen(e) => write!(f, "[ir] {e:?}"),
-            BuildError::AsmCodegen(e) => write!(f, "[asm] {e:?}"),
+            // BuildError::AsmCodegen(e) => write!(f, "[asm] {e:?}"),
             BuildError::NasmSpawn(e) => write!(f, "[nasm] could not spawn nasm: {e}"),
             BuildError::NasmFailed { stderr } => write!(f, "[nasm] failed:\n{stderr}"),
             BuildError::LdSpawn(e) => write!(f, "[ld] could not spawn ld: {e}"),
@@ -122,46 +122,48 @@ pub fn run(file_name: &str, options: &BuildOptions) -> Result<i32, BuildError> {
     }
 
     let module = codegen::generate_code(&ast).map_err(BuildError::IrCodegen)?;
+    dbg!(&module);
     if options.emit_ir {
         eprintln!("[ir] {module:#?}");
     }
+    Ok(0)
 
-    let asm = asmcodegen::AsmCodeGen::gen_asm(module).map_err(BuildError::AsmCodegen)?;
-    if options.emit_asm {
-        eprintln!("[asm]\n{asm}");
-    }
-
-    let build_dir = PathBuf::from("target").join("rython");
-    fs::create_dir_all(&build_dir).map_err(|e| BuildError::CreateBuildDir {
-        path: build_dir.clone(),
-        source: e,
-    })?;
-
-    let asm_path = build_dir.join(format!("{stem}.asm"));
-    let obj_path = build_dir.join(format!("{stem}.o"));
-    let bin_path = options
-        .output_path
-        .clone()
-        .unwrap_or_else(|| build_dir.join(&stem));
-
-    fs::write(&asm_path, &asm).map_err(|e| BuildError::WriteAsm {
-        path: asm_path.clone(),
-        source: e,
-    })?;
-
-    assemble(&asm_path, &obj_path)?;
-    link(&obj_path, &bin_path)?;
-
-    if !options.keep_intermediates {
-        let _ = fs::remove_file(&asm_path);
-        let _ = fs::remove_file(&obj_path);
-    }
-
-    if !options.run_after_build {
-        return Ok(0);
-    }
-
-    execute(&bin_path)
+    // let asm = asmcodegen::AsmCodeGen::gen_asm(module).map_err(BuildError::AsmCodegen)?;
+    // if options.emit_asm {
+    //     eprintln!("[asm]\n{asm}");
+    // }
+    //
+    // let build_dir = PathBuf::from("target").join("rython");
+    // fs::create_dir_all(&build_dir).map_err(|e| BuildError::CreateBuildDir {
+    //     path: build_dir.clone(),
+    //     source: e,
+    // })?;
+    //
+    // let asm_path = build_dir.join(format!("{stem}.asm"));
+    // let obj_path = build_dir.join(format!("{stem}.o"));
+    // let bin_path = options
+    //     .output_path
+    //     .clone()
+    //     .unwrap_or_else(|| build_dir.join(&stem));
+    //
+    // fs::write(&asm_path, &asm).map_err(|e| BuildError::WriteAsm {
+    //     path: asm_path.clone(),
+    //     source: e,
+    // })?;
+    //
+    // assemble(&asm_path, &obj_path)?;
+    // link(&obj_path, &bin_path)?;
+    //
+    // if !options.keep_intermediates {
+    //     let _ = fs::remove_file(&asm_path);
+    //     let _ = fs::remove_file(&obj_path);
+    // }
+    //
+    // if !options.run_after_build {
+    //     return Ok(0);
+    // }
+    //
+    // execute(&bin_path)
 }
 
 fn assemble(asm_path: &Path, obj_path: &Path) -> Result<(), BuildError> {

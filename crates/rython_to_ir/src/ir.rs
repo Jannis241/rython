@@ -94,7 +94,8 @@ pub enum IrInstruction {
 
     Binary {
         temp_id: TempId, // Wert-Temp: enthaelt danach das Ergebnis der binaeren Operation.
-        ty: IrType,      // Typ von lhs, rhs und Ergebnis.
+        ty_lr: IrType,      // Typ von lhs, rhs und Ergebnis.
+        ty_res: IrType,
         op: IrBinaryOp,  // Operation, z.B. Add oder Eq.
         lhs: TempId,     // Wert-Temp: linker Operand.
         rhs: TempId,     // Wert-Temp: rechter Operand.

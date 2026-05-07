@@ -6,6 +6,8 @@ pub enum CodegenError {
     InvalidItem(Item),
     MismatchedTypes(IrType, IrType), // expected type, got
 
+    InvalidBinaryOp(IrType, IrType), // zb 1 + true
+
     CodeAfterTerminator, // wenn man zb nach return 1; noch etwas schreibt
     MissingTerminator(String), // Kein Terminator, String ist der name des labels
 
