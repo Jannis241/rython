@@ -217,7 +217,6 @@ pub enum Expr {
         value: Box<Expr>,
     },
 
-    #[allow(non_snake_case)]
     PostFix {
         Op: PostFixOp,
         value: Box<Expr>,

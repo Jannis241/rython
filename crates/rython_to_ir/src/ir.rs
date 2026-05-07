@@ -57,7 +57,7 @@ pub struct IrFunction {
 pub struct IrBlock {
     pub label: String, // z.B entry:
     pub instructions: Vec<IrInstruction>,
-    pub terminator: Terminator
+    pub terminator: Terminator,
 }
 #[derive(Debug, Clone)]
 pub enum IrInstruction {
@@ -94,11 +94,11 @@ pub enum IrInstruction {
 
     Binary {
         temp_id: TempId, // Wert-Temp: enthaelt danach das Ergebnis der binaeren Operation.
-        ty_lr: IrType,      // Typ von lhs, rhs und Ergebnis.
+        ty_lr: IrType,   // Typ von lhs, rhs und Ergebnis.
         ty_res: IrType,
-        op: IrBinaryOp,  // Operation, z.B. Add oder Eq.
-        lhs: TempId,     // Wert-Temp: linker Operand.
-        rhs: TempId,     // Wert-Temp: rechter Operand.
+        op: IrBinaryOp, // Operation, z.B. Add oder Eq.
+        lhs: TempId,    // Wert-Temp: linker Operand.
+        rhs: TempId,    // Wert-Temp: rechter Operand.
     },
 
     // functions
@@ -201,6 +201,7 @@ pub enum IrType {
     Bool,
     Void,
     F64,
+    Char,
     Named(String),
     Pointer(Box<IrType>),
 }

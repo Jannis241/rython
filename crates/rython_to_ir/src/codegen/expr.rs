@@ -1,10 +1,11 @@
 use std::any::Any;
 use std::iter::OnceWith;
 use std::ops::Deref;
+use std::os::linux::net::SocketAddrExt;
 
 use super::error::CodegenError;
 use super::generator::IrGenerator;
-use crate::ast::{BinaryOp, Expr, UnaryOp};
+use crate::ast::{BinaryOp, Expr, Type, UnaryOp};
 use crate::ir::{IrBinaryOp, IrInstruction, IrType, IrUnaryOp, PrimitiveValue, TempId};
 
 impl IrGenerator {
@@ -16,13 +17,99 @@ impl IrGenerator {
             Expr::BoolLiteral(value) => self.gen_boolliteral(*value),
             Expr::Unary { op, value } => self.gen_unary_op(op, value), // todo: Operator
             Expr::Assign { target, value } => self.gen_assign(target, value),
-            Expr::BinaryOp { // todo: operator
+            Expr::BinaryOp {
+                // todo: operator
                 lhs,
                 binary_op,
                 rhs,
             } => self.gen_binary_op(lhs, binary_op, rhs),
-            other => return Err(CodegenError::InvalidExpr(expr.clone())),
+            Expr::NullLiteral => unimplemented!(""),
+            Expr::CharLiteral(character) => self.gen_charliteral(*character),
+            Expr::ListLiteral(inner) => unimplemented!(),
+            Expr::Call {
+                callee,
+                type_args,
+                arguments,
+            } => self.gen_call(callee, type_args, arguments),
+            Expr::PostFix { Op, value } => unimplemented!(),
+            Expr::StringLiteral(value) => unimplemented!(),
+            Expr::StructLiteral {
+                struct_name,
+                arguments,
+            } => unimplemented!(),
+            Expr::Grouping(inner) => self.gen_grouping(inner),
+            Expr::BinaryOpAssign {
+                target,
+                binary_op,
+                value,
+            } => self.gen_binary_op_assign(target, binary_op, value),
+            Expr::FieldAccess { object, field_name } => unimplemented!(),
         }
+    }
+
+    fn gen_call(
+        &mut self,
+        callee: &Box<Expr>,
+        type_args: &Vec<Type>,
+        arguments: &Vec<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let mut arg_temp_ids = vec![];
+
+        for arg in arguments {
+            arg_temp_ids.push(self.gen_expr(arg)?.0);
+        }
+
+        let function_name = match *callee.clone() {
+            Expr::Variable(name) => name,
+            _ => unimplemented!(),
+        };
+        let return_type = self
+            .functions_return_type
+            .get(&function_name)
+            .ok_or(CodegenError::UnknownFunction(function_name.clone()))?
+            .clone()
+            .unwrap_or(IrType::Void);
+
+        let temp_id = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Call {
+                temp_id: Some(temp_id),
+                function_name,
+                args: arg_temp_ids,
+                return_type: return_type.clone(),
+            });
+
+        Ok((temp_id, return_type))
+    }
+
+    fn gen_binary_op_assign(
+        &mut self,
+        target: &Box<Expr>,
+        binary_op: &BinaryOp,
+        value: &Box<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let expanded_expr = Expr::BinaryOp {
+            lhs: target.clone(),
+            binary_op: binary_op.clone(),
+            rhs: value.clone(),
+        };
+        self.gen_assign(target, &Box::new(expanded_expr))
+    }
+
+    fn gen_grouping(&mut self, inner: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
+        self.gen_expr(&inner)
+    }
+
+    fn gen_charliteral(&mut self, character: char) -> Result<(TempId, IrType), CodegenError> {
+        let temp_id = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::PrimitiveConst {
+                temp_id,
+                ty: IrType::Char,
+                value: PrimitiveValue::Char(character),
+            });
+
+        Ok((temp_id, IrType::Char))
     }
 
     fn gen_assign(
@@ -40,6 +127,8 @@ impl IrGenerator {
 
                 (variable.addr, variable.ty.clone())
             }
+            Expr::PostFix { Op, value } => unimplemented!(),
+            Expr::FieldAccess { object, field_name } => unimplemented!(),
             other => return Err(CodegenError::InvalidExpr(other.clone())),
         };
 

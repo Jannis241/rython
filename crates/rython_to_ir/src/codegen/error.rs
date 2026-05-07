@@ -9,10 +9,11 @@ pub enum CodegenError {
     InvalidBinaryOp(IrType, IrType), // zb 1 + true
     InvalidUnaryOp(IrType),
 
-    CodeAfterTerminator, // wenn man zb nach return 1; noch etwas schreibt
+    CodeAfterTerminator,       // wenn man zb nach return 1; noch etwas schreibt
     MissingTerminator(String), // Kein Terminator, String ist der name des labels
 
     UnknownVariable(String),
+    UnknownFunction(String),
 
     InvalidIntLiteral(String),
     InvalidFloatLiteral(String),

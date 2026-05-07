@@ -16,6 +16,7 @@ pub struct IrGenerator {
     pub(super) current_expected_return_type: IrType,
     pub(super) scopes: Vec<Scope>,
     pub(super) block_handler: BlockHandler,
+    pub(super) functions_return_type: HashMap<String, Option<IrType>>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +112,7 @@ impl IrGenerator {
             scopes: Vec::new(),
             type_defs: HashMap::new(),
             block_handler: BlockHandler::init(),
+            functions_return_type: HashMap::new(),
         }
     }
 
@@ -188,7 +190,7 @@ impl IrGenerator {
         self.block_handler.jump_to_block("entry");
 
         self.temp_counter = 0; // ------> @Jesko!!! Codex sagt das soll man so machen du handelst
-        // das schon richtig in asm sonst nicht so sigma von dir
+                               // das schon richtig in asm sonst nicht so sigma von dir
 
         // Für die neue Funktion alle vorherigen Scopes clearen
         self.scopes.clear();
@@ -210,7 +212,9 @@ impl IrGenerator {
         self.exit_scope();
 
         // checkt einfach nur ob jeder Block einen Terminator hat
-        let blocks = self.block_handler.finish_blocks(&self.current_expected_return_type)?;
+        let blocks = self
+            .block_handler
+            .finish_blocks(&self.current_expected_return_type)?;
 
         Ok(IrFunction {
             name: function.name.clone(),
@@ -251,11 +255,32 @@ impl IrGenerator {
             }
         }
     }
+
+    pub(super) fn preprocces_function_return_types(&mut self, items: &[Item]) {
+        for item in items {
+            match item {
+                Item::Function(f) => {
+                    self.functions_return_type.insert(
+                        //TODO: generic Params
+                        f.name.clone(),
+                        if let Some(rt) = f.return_type.clone() {
+                            Some(IrGenerator::convert_to_ir_type(&rt))
+                        } else {
+                            None
+                        },
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
     let mut generator = IrGenerator::new();
     let mut module = IrModule::new();
+
+    generator.preprocces_function_return_types(items);
 
     for item in items {
         match item {
