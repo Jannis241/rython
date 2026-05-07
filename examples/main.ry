@@ -1,5 +1,9 @@
 fn main(a: int, b: int) int {
+    let y: bool = true;
+    let z: bool = !y;
 
     let x:int = a - 5 / b + 3;
-    return a+x-5*b;
+    let t: int = -x;
+    t = 5;
+    return a+x-5*b + t;
 }

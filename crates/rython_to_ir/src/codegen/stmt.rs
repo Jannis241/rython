@@ -1,4 +1,4 @@
-use crate::ast::{Asm, Let, Return, Stmt};
+use crate::ast::{Asm, Expr, Let, Return, Stmt};
 use crate::ir::{IrInstruction, IrType, Terminator};
 
 use super::error::CodegenError;
@@ -71,11 +71,16 @@ impl IrGenerator {
         Ok(())
     }
 
+
     pub(super) fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), CodegenError> {
         match stmt {
             Stmt::Let(l) => self.gen_let(l),
             Stmt::Return(ret) => self.gen_return(ret),
             Stmt::Asm(asm) => self.gen_asm(asm),
+            Stmt::Expr(expr) => {
+                self.gen_expr(expr)?;
+                Ok(())
+            }
             _ => {
                 return Err(CodegenError::InvalidStatement(stmt.clone()));
             }

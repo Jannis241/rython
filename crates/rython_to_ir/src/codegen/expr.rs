@@ -26,11 +26,40 @@ impl IrGenerator {
     }
 
     fn gen_assign(
-        &self,
+        &mut self,
         target: &Box<Expr>,
         value: &Box<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        todo!()
+        let t = target.deref();
+
+        let (addr, target_type) = match t {
+            Expr::Variable(name) => {
+                let variable = self
+                    .lookup_variable(name)
+                    .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
+
+                (variable.addr, variable.ty.clone())
+            }
+            other => return Err(CodegenError::InvalidExpr(other.clone())),
+        };
+
+        let (temp_value_var, value_type) = self.gen_expr(value)?;
+
+        if (target_type != value_type) {
+            return Err(CodegenError::MismatchedTypes(
+                target_type.clone(),
+                value_type,
+            ));
+        }
+
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Store {
+                ty: target_type.clone(),
+                value: temp_value_var,
+                addr,
+            })?;
+
+        Ok((temp_value_var, target_type))
     }
 
     fn convert_to_ir_unary_op(unary_op: &UnaryOp) -> IrUnaryOp {
@@ -40,10 +69,7 @@ impl IrGenerator {
             UnaryOp::BitNot => IrUnaryOp::BitNot,
         }
     }
-    fn check_unary_op_type(
-        op: &UnaryOp,
-        value_type: &IrType,
-    ) -> Result<(), CodegenError> {
+    fn check_unary_op_type(op: &UnaryOp, value_type: &IrType) -> Result<(), CodegenError> {
         match op {
             UnaryOp::Neg => match value_type {
                 IrType::I64 | IrType::F64 => Ok(()),
@@ -67,10 +93,9 @@ impl IrGenerator {
         unary_op: &UnaryOp,
         value: &Box<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-
         let (tmp_id_1, ir_type) = self.gen_expr(value)?;
 
-        Self::check_unary_op_type(unary_op, &ir_type);
+        Self::check_unary_op_type(unary_op, &ir_type)?;
         let ir_unary_op = Self::convert_to_ir_unary_op(unary_op);
 
         let temp_var = self.next_temp_id();
