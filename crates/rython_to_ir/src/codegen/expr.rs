@@ -52,7 +52,7 @@ impl IrGenerator {
         field_name: &String,
     ) -> Result<(TempId, IrType), CodegenError> {
         // lädt den feldwert aus dem objekt über GetFieldAddr und Load
-        let (field_addr, field_ty) = self.gen_field_place(object, field_name)?;
+        let (field_addr, field_ty) = self.gen_field_addr(object, field_name)?;
         let value_temp = self.next_temp_id();
         self.block_handler
             .add_instruction_to_current_block(IrInstruction::Load {
@@ -63,31 +63,39 @@ impl IrGenerator {
         Ok((value_temp, field_ty))
     }
 
-    // liefert die adresse vom feld zurück nicht den wert
-    // wird benutzt für lese zugriffe und für ++ -- targets
-    fn gen_field_place(
+    //Jannis slop fix!! yessirsky war ass (grr)
+    // liefert die adresse vom feld zurück, nicht den wert.
+    // für GetFieldAddr brauchen wir die addr des structs (nicht seinen wert),
+    // also gen_lvalue_addr statt gen_expr. bei Pointer<Named> ist der wert die addr,
+    // dann muss einmal geladen werden.
+    fn gen_field_addr(
         &mut self,
         object: &Box<Expr>,
         field_name: &String,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (obj_temp, obj_ty) = self.gen_expr(object)?; // Weiß nicht ob das so ganz funktioniert,
-        // weil du bekommst den wirklichen Wert von dem Objekt und nicht die adresse wo es
-        // gespeichert ist, weil self.gen_expr bei Variablen den wert returnt und nicht die adresse
-        // un ein struct kann ja eine variable sein.  Außer es ist irgendwie so, dass die wirkliche
-        // value vom struct einfach die adresse zum ersten feld ist, aber dann sollten wir vllt
-        // unten in der instruction base_addr zu first_field_addr oder sowas umbennen
-        //
-        // Also je nach dem ob du hier wirklich die value vom Struct bekommen willst oder die
-        // adresse wo diese value gespeichert ist
-        //
-        let struct_name = Self::struct_name_from_ty(&obj_ty)
-            .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
+        let (lv_addr, lv_ty) = self.gen_lvalue_addr(object)?;
+        let (base_addr, struct_ty) = match &lv_ty {
+            IrType::Pointer(_) => {
+                let loaded = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Load {
+                        temp_id: loaded,
+                        ty: lv_ty.clone(),
+                        addr: lv_addr,
+                    })?;
+                (loaded, lv_ty)
+            }
+            _ => (lv_addr, lv_ty),
+        };
+
+        let struct_name = Self::struct_name_from_ty(&struct_ty)
+            .ok_or_else(|| CodegenError::UnknownType(format!("{struct_ty:?}")))?;
         let field_ty = self.get_struct_field_typ(&struct_name, field_name)?;
         let field_addr = self.next_temp_id();
         self.block_handler
             .add_instruction_to_current_block(IrInstruction::GetFieldAddr {
                 temp_id: field_addr,
-                base_addr: obj_temp,
+                base_addr,
                 field_name: field_name.clone(),
             })?;
         Ok((field_addr, field_ty))
@@ -106,9 +114,10 @@ impl IrGenerator {
         }
     }
 
-    // hilfsfunktion für l-werte: liefert die adresse und den typ
-    // unterstützt variable feld zugriff und gruppierung
-    fn gen_lvalue_place(
+    //Jannis slop fix!! yessirsky war ass (grr)
+    // hilfsfunktion für l-werte: liefert die adresse und den typ.
+    // unterstützt variable, feld zugriff und gruppierung
+    fn gen_lvalue_addr(
         &mut self,
         expr: &Box<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
@@ -120,9 +129,9 @@ impl IrGenerator {
                 Ok((var.addr, var.ty.clone()))
             }
             Expr::FieldAccess { object, field_name } => {
-                self.gen_field_place(object, field_name)
+                self.gen_field_addr(object, field_name)
             }
-            Expr::Grouping(inner) => self.gen_lvalue_place(inner),
+            Expr::Grouping(inner) => self.gen_lvalue_addr(inner),
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }
     }
@@ -139,7 +148,7 @@ impl IrGenerator {
         match op {
             PostFixOp::PlusPlus | PostFixOp::MinusMinus => {
                 // l-wert holen aus variable oder feld zugriff
-                let (target_addr, target_ty) = self.gen_lvalue_place(value)?;
+                let (target_addr, target_ty) = self.gen_lvalue_addr(value)?;
 
                 if target_ty != IrType::I64 && target_ty != IrType::F64 {
                     return Err(CodegenError::InvalidUnaryOp(target_ty));

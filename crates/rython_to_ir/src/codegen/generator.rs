@@ -61,33 +61,50 @@ impl BlockHandler {
             .expect("block does not exist");
     }
 
+    //Jannis slop fix!! yessirsky war ass (grr)
     pub fn add_instruction_to_current_block(
         &mut self,
         instruction: IrInstruction,
     ) -> Result<(), CodegenError> {
-        // instrutons werden immer angehängt, auch wenn der block schon
-        // einen termiantor hat, mehrfache return in folge würden sonst direkt
-        // beim generieren des zweiten werts kaputt gehen
+        // checken ob der block zu dem man instructions adden will schon terminated wurde,
+        // dann darf man nichts mehr hinzufügen
+        if self.blocks[self.current_block_index].terminator.is_some() {
+            return Err(CodegenError::CodeAfterTerminator);
+        }
+
         self.blocks[self.current_block_index]
             .instructions
             .push(instruction);
         Ok(())
     }
 
+    //Jannis slop fix!! yessirsky war ass (grr)
     pub fn add_terminator(&mut self, terminator: Terminator) -> Result<(), CodegenError> {
-        // Terminator wird immer überschrieben, bei mehreren returns im selben
-        // block gewinnt der letzte
+        if self.blocks[self.current_block_index].terminator.is_some() {
+            return Err(CodegenError::CodeAfterTerminator);
+        }
         self.blocks[self.current_block_index].terminator = Some(terminator);
         Ok(())
     }
 
-    pub fn finish_blocks(&self, _return_type: &IrType) -> Result<Vec<IrBlock>, CodegenError> {
+    pub fn is_current_terminated(&self) -> bool {
+        self.blocks[self.current_block_index].terminator.is_some()
+    }
+
+    //Jannis slop fix!! yessirsky war ass (grr)
+    pub fn finish_blocks(&self, return_type: &IrType) -> Result<Vec<IrBlock>, CodegenError> {
         let mut final_ir_blocks = Vec::new();
         for block in &self.blocks {
-            // wenn der Block keinen terminator hat, default zu Ret(None).
-            // bei nicht void rückgabetyp ist das unvollständig,
-            // wird aber später im backend /einem zukünftigen pass abgefangen.
-            let block_terminator = block.terminator.clone().unwrap_or(Terminator::Ret(None));
+            let block_terminator = match block.terminator.clone() {
+                Some(t) => Ok(t),
+                None => {
+                    if return_type == &IrType::Void {
+                        Ok(Terminator::Ret(None))
+                    } else {
+                        Err(CodegenError::MissingTerminator(block.label.clone()))
+                    }
+                }
+            }?;
             final_ir_blocks.push(IrBlock {
                 label: block.label.clone(),
                 instructions: block.instructions.clone(),
