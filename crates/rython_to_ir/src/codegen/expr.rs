@@ -1,13 +1,9 @@
-use std::any::Any;
 use std::collections::HashMap;
-use std::env::var;
-use std::iter::OnceWith;
 use std::ops::Deref;
-use std::os::linux::net::SocketAddrExt;
 
 use super::error::CodegenError;
 use super::generator::IrGenerator;
-use crate::ast::{BinaryOp, Expr, Type, UnaryOp};
+use crate::ast::{BinaryOp, Expr, PostFixOp, Type, UnaryOp};
 use crate::ir::{
     IrBinaryOp, IrField, IrInstruction, IrType, IrTypeDefinition, IrUnaryOp, PrimitiveValue, TempId,
 };
@@ -22,7 +18,6 @@ impl IrGenerator {
             Expr::Unary { op, value } => self.gen_unary_op(op, value),
             Expr::Assign { target, value } => self.gen_assign(target, value),
             Expr::BinaryOp {
-                // todo: operator
                 lhs,
                 binary_op,
                 rhs,
@@ -31,12 +26,11 @@ impl IrGenerator {
             Expr::CharLiteral(character) => self.gen_charliteral(*character),
             Expr::ListLiteral(inner) => unimplemented!(),
             Expr::Call {
-                // todo: Mehr callee als variable, und generic types
                 callee,
                 type_args,
                 arguments,
             } => self.gen_call(callee, type_args, arguments),
-            Expr::PostFix { Op, value } => unimplemented!(), //operators
+            Expr::PostFix { Op, value } => self.gen_postfix(Op, value),
             Expr::StringLiteral(value) => self.gen_string_literal(value),
             Expr::StructLiteral {
                 struct_name,
@@ -44,19 +38,180 @@ impl IrGenerator {
             } => self.gen_struct_literal(struct_name, arguments),
             Expr::Grouping(inner) => self.gen_grouping(inner),
             Expr::BinaryOpAssign {
-                // todo: operators
                 target,
                 binary_op,
                 value,
             } => self.gen_binary_op_assign(target, binary_op, value),
-            Expr::FieldAccess { object, field_name } => self.gen_field_access(object, fi),
+            Expr::FieldAccess { object, field_name } => self.gen_field_access(object, field_name),
         }
     }
 
-    fn gen_field_access(&mut self, object: Expr) -> Result<(), CodegenError> {}
+    fn gen_field_access(
+        &mut self,
+        object: &Box<Expr>,
+        field_name: &String,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        // lädt den feldwert aus dem objekt über GetFieldAddr und Load
+        let (field_addr, field_ty) = self.gen_field_place(object, field_name)?;
+        let value_temp = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Load {
+                temp_id: value_temp,
+                ty: field_ty.clone(),
+                addr: field_addr,
+            })?;
+        Ok((value_temp, field_ty))
+    }
 
-    fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
+    // liefert die adresse vom feld zurück nicht den wert
+    // wird benutzt für lese zugriffe und für ++ -- targets
+    fn gen_field_place(
+        &mut self,
+        object: &Box<Expr>,
+        field_name: &String,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let (obj_temp, obj_ty) = self.gen_expr(object)?;
+        let struct_name = Self::struct_name_from_ty(&obj_ty)
+            .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
+        let field_ty = self.get_struct_field_typ(&struct_name, field_name)?;
+        let field_addr = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::GetFieldAddr {
+                temp_id: field_addr,
+                base_addr: obj_temp,
+                field_name: field_name.clone(),
+            })?;
+        Ok((field_addr, field_ty))
+    }
+
+    // zieht den struct namen aus einem typ
+    // funktioniert für Named und Pointer<Named>
+    fn struct_name_from_ty(ty: &IrType) -> Option<String> {
+        match ty {
+            IrType::Named(name) => Some(name.clone()),
+            IrType::Pointer(inner) => match inner.as_ref() {
+                IrType::Named(name) => Some(name.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    // hilfsfunktion für l-werte: liefert die adresse und den typ
+    // unterstützt variable feld zugriff und gruppierung
+    fn gen_lvalue_place(
+        &mut self,
+        expr: &Box<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        match expr.deref() {
+            Expr::Variable(name) => {
+                let var = self
+                    .lookup_variable(name)
+                    .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
+                Ok((var.addr, var.ty.clone()))
+            }
+            Expr::FieldAccess { object, field_name } => {
+                self.gen_field_place(object, field_name)
+            }
+            Expr::Grouping(inner) => self.gen_lvalue_place(inner),
+            other => Err(CodegenError::InvalidExpr(other.clone())),
+        }
+    }
+
+    fn gen_string_literal(&mut self, _value: &str) -> Result<(TempId, IrType), CodegenError> {
         unimplemented!()
+    }
+
+    fn gen_postfix(
+        &mut self,
+        op: &PostFixOp,
+        value: &Box<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        match op {
+            PostFixOp::PlusPlus | PostFixOp::MinusMinus => {
+                // l-wert holen aus variable oder feld zugriff
+                let (target_addr, target_ty) = self.gen_lvalue_place(value)?;
+
+                if target_ty != IrType::I64 && target_ty != IrType::F64 {
+                    return Err(CodegenError::InvalidUnaryOp(target_ty));
+                }
+
+                let old_value_id = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Load {
+                        temp_id: old_value_id,
+                        ty: target_ty.clone(),
+                        addr: target_addr,
+                    })?;
+
+                let one_id = self.next_temp_id();
+                let one_value = match target_ty {
+                    IrType::I64 => PrimitiveValue::Int(1),
+                    IrType::F64 => PrimitiveValue::Float(1.0),
+                    _ => unreachable!(),
+                };
+                self.block_handler.add_instruction_to_current_block(
+                    IrInstruction::PrimitiveConst {
+                        temp_id: one_id,
+                        ty: target_ty.clone(),
+                        value: one_value,
+                    },
+                )?;
+
+                let bin_op = match op {
+                    PostFixOp::PlusPlus => IrBinaryOp::Add,
+                    PostFixOp::MinusMinus => IrBinaryOp::Sub,
+                    _ => unreachable!(),
+                };
+                let new_value_id = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Binary {
+                        temp_id: new_value_id,
+                        ty_lr: target_ty.clone(),
+                        ty_res: target_ty.clone(),
+                        op: bin_op,
+                        lhs: old_value_id,
+                        rhs: one_id,
+                    })?;
+
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Store {
+                        ty: target_ty.clone(),
+                        value: new_value_id,
+                        addr: target_addr,
+                    })?;
+
+                Ok((old_value_id, target_ty))
+            }
+            PostFixOp::Brackets(idx_expr) => {
+                // [] wird über die operator überladung auf Named typen aufgelöst
+                // arr[idx] wird zu Struct_<[]>(arr idx)
+                let (lhs_temp, lhs_ty) = self.gen_expr(value)?;
+                let (idx_temp, _idx_ty) = self.gen_expr(idx_expr)?;
+
+                let struct_name = Self::struct_name_from_ty(&lhs_ty)
+                    .ok_or_else(|| CodegenError::UnknownType(format!("{lhs_ty:?}")))?;
+                let key = (struct_name.clone(), "[]".to_string());
+                let (mangled, return_ty) = self
+                    .operator_functions
+                    .get(&key)
+                    .cloned()
+                    .ok_or_else(|| {
+                        CodegenError::UnknownFunction(format!("{}_[]", struct_name))
+                    })?;
+
+                let temp_id = self.next_temp_id();
+                self.block_handler.add_instruction_to_current_block(
+                    IrInstruction::Call {
+                        temp_id: Some(temp_id),
+                        function_name: mangled,
+                        args: vec![lhs_temp, idx_temp],
+                        return_type: return_ty.clone(),
+                    },
+                )?;
+                Ok((temp_id, return_ty))
+            }
+        }
     }
 
     pub(super) fn gen_struct_literal(
@@ -64,77 +219,58 @@ impl IrGenerator {
         struct_name: &String,
         arguments: &Vec<(String, Expr)>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let struct_pointer_base_temp_id = self.next_temp_id(); // ist die temp id wo der pointer zu
-                                                               // dem struct gespeichert wird
-        let struct_pointer_base_type =
-            IrType::Pointer(Box::new(IrType::Named(struct_name.clone())));
-
-        let mut first_temp_id = TempId(self.temp_counter + 1); // NICHT self.next_temp_id() callen , weil
-                                                               // sonst es nicht ehrlich die id zum ersten
-                                                               // field ist da in dem for loop unten schon
-                                                               // beim ersten self.next_temp_id() gecallt
-                                                               // wird
-
-        self.block_handler
-            .add_instruction_to_current_block(IrInstruction::PrimitiveConst {
-                ty: struct_pointer_base_type.clone(),
-                temp_id: struct_pointer_base_temp_id,
-                value: PrimitiveValue::Pointer(first_temp_id),
-            });
-
-        let mut argument_temp_ids: HashMap<&String, TempId> = HashMap::new();
-
-        //erst alle fields allocaten
-        for (field_name, _) in arguments {
-            let arg_temp_id = self.next_temp_id();
-            self.block_handler
-                .add_instruction_to_current_block(IrInstruction::Alloca {
-                    temp_id: arg_temp_id,
-                    ty: self.get_struct_field_typ(struct_name, field_name)?,
-                });
-            argument_temp_ids.insert(field_name, arg_temp_id);
-            let name = self.mangel(field_name);
-            let var = super::Variable {
-                name: self.mangel(field_name),
-                ty: self.get_struct_field_typ(struct_name, field_name)?,
-                addr: arg_temp_id,
-            };
-            self.insert_variable_global(
-                format!("mangeld_{}_{}", struct_name, field_name),
-                self.get_struct_field_typ(struct_name, field_name)?,
-                arg_temp_id,
-            );
-        }
-
-        //dann checken ob alle fields angegeben wurden
-        if argument_temp_ids
-            .keys()
-            .map(|k| (*k).clone())
-            .collect::<Vec<String>>()
-            != self
-                .get_struct_fields(struct_name)?
-                .iter()
-                .map(|irfld| irfld.name.clone())
-                .collect::<Vec<String>>()
-        {
+        // 1. fields prüfen
+        let struct_fields = self.get_struct_fields(struct_name)?;
+        if arguments.len() != struct_fields.len() {
             return Err(CodegenError::FieldsDontMatch);
         }
-
-        //
-        for (field_name, argument_value_expr) in arguments {
-            let (this_field_temp_id, ty) = self.gen_expr(argument_value_expr)?;
-            self.block_handler
-                .add_instruction_to_current_block(IrInstruction::Store {
-                    ty,
-                    value: this_field_temp_id,
-                    addr: argument_temp_ids
-                        .get(field_name)
-                        .unwrap_or_else(|| unreachable!())
-                        .clone(),
-                });
+        let arg_names: Vec<String> = arguments.iter().map(|(n, _)| n.clone()).collect();
+        for f in struct_fields.iter() {
+            if !arg_names.contains(&f.name) {
+                return Err(CodegenError::FieldsDontMatch);
+            }
+        }
+        let mut seen: HashMap<String, ()> = HashMap::new();
+        for n in arg_names.iter() {
+            if seen.insert(n.clone(), ()).is_some() {
+                return Err(CodegenError::FieldsDontMatch);
+            }
         }
 
-        Ok((struct_pointer_base_temp_id, struct_pointer_base_type))
+        // 2. alloc für die fields
+        let struct_ty = IrType::Named(struct_name.clone());
+        let struct_addr = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Alloca {
+                temp_id: struct_addr,
+                ty: struct_ty.clone(),
+            })?;
+
+        //3.für jedes field value storen
+        for (field_name, value_expr) in arguments {
+            let field_ty = self.get_struct_field_typ(struct_name, field_name)?;
+            let (value_temp, value_ty) = self.gen_expr(value_expr)?;
+            if field_ty != value_ty {
+                return Err(CodegenError::MismatchedTypes(field_ty, value_ty));
+            }
+
+            let field_addr = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::GetFieldAddr {
+                    temp_id: field_addr,
+                    base_addr: struct_addr,
+                    field_name: field_name.clone(),
+                })?;
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::Store {
+                    ty: field_ty,
+                    value: value_temp,
+                    addr: field_addr,
+                })?;
+        }
+
+        let result_ty = IrType::Pointer(Box::new(struct_ty));
+        Ok((struct_addr, result_ty))
     }
 
     fn get_struct_fields(&self, struct_name: &String) -> Result<Vec<IrField>, CodegenError> {
@@ -144,11 +280,13 @@ impl IrGenerator {
 
         for typedef in self.type_defs.iter() {
             if let IrTypeDefinition::Struct { name, fields } = typedef {
-                if found_struct {
-                    return Err(CodegenError::AmbigousType(struct_name.clone()));
-                } else {
-                    found_struct = true;
-                    typ = Some(fields.clone());
+                if name == struct_name {
+                    if found_struct {
+                        return Err(CodegenError::AmbigousType(struct_name.clone()));
+                    } else {
+                        found_struct = true;
+                        typ = Some(fields.clone());
+                    }
                 }
             }
         }
@@ -170,19 +308,21 @@ impl IrGenerator {
 
         for typedef in self.type_defs.iter() {
             if let IrTypeDefinition::Struct { name, fields } = typedef {
+                if name != struct_name {
+                    continue;
+                }
                 if found_struct {
                     return Err(CodegenError::AmbigousType(struct_name.clone()));
-                } else {
-                    found_struct = true;
+                }
+                found_struct = true;
 
-                    for field in fields {
-                        if &field.name == field_name {
-                            if found_field {
-                                return Err(CodegenError::AmbigousField(field_name.clone()));
-                            } else {
-                                found_field = true;
-                                typ = Some(field.ty.clone());
-                            }
+                for field in fields {
+                    if &field.name == field_name {
+                        if found_field {
+                            return Err(CodegenError::AmbigousField(field_name.clone()));
+                        } else {
+                            found_field = true;
+                            typ = Some(field.ty.clone());
                         }
                     }
                 }
@@ -204,6 +344,12 @@ impl IrGenerator {
         type_args: &Vec<Type>,
         arguments: &Vec<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
+        // neuer pfad: methoden aufruf wenn callee ein feld zugriff ist
+        // obj.method(args) wird zu Struct_method(obj args)
+        if let Expr::FieldAccess { object, field_name } = callee.deref() {
+            return self.gen_method_call(object, field_name, arguments);
+        }
+
         let mut arg_temp_ids = vec![];
 
         for arg in arguments {
@@ -228,7 +374,44 @@ impl IrGenerator {
                 function_name,
                 args: arg_temp_ids,
                 return_type: return_type.clone(),
-            });
+            })?;
+
+        Ok((temp_id, return_type))
+    }
+
+    // ruft eine methode auf einem objekt auf
+    // das objekt wird automatisch als erstes argument vor die user args gepackt
+    fn gen_method_call(
+        &mut self,
+        object: &Box<Expr>,
+        method_name: &String,
+        arguments: &Vec<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let (obj_temp, obj_ty) = self.gen_expr(object)?;
+        let struct_name = Self::struct_name_from_ty(&obj_ty)
+            .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
+        let mangled = format!("{}_{}", struct_name, method_name);
+
+        let mut arg_temp_ids = vec![obj_temp];
+        for arg in arguments {
+            arg_temp_ids.push(self.gen_expr(arg)?.0);
+        }
+
+        let return_type = self
+            .functions_return_type
+            .get(&mangled)
+            .ok_or_else(|| CodegenError::UnknownFunction(mangled.clone()))?
+            .clone()
+            .unwrap_or(IrType::Void);
+
+        let temp_id = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Call {
+                temp_id: Some(temp_id),
+                function_name: mangled,
+                args: arg_temp_ids,
+                return_type: return_type.clone(),
+            })?;
 
         Ok((temp_id, return_type))
     }
@@ -258,7 +441,7 @@ impl IrGenerator {
                 temp_id,
                 ty: IrType::Char,
                 value: PrimitiveValue::Char(character),
-            });
+            })?;
 
         Ok((temp_id, IrType::Char))
     }
@@ -399,6 +582,33 @@ impl IrGenerator {
         let (temp_id_1, ir_type_1) = self.gen_expr(lhs)?;
         let (temp_id_2, ir_type_2) = self.gen_expr(rhs)?;
 
+        //operator aalung fals es  ein struct ist
+        let lhs_struct_name = match &ir_type_1 {
+            IrType::Named(name) => Some(name.clone()),
+            IrType::Pointer(inner) => match inner.as_ref() {
+                IrType::Named(name) => Some(name.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+
+        if let Some(struct_name) = lhs_struct_name {
+            let op_str = Self::binary_op_to_str(binary_op).to_string();
+            let key = (struct_name, op_str);
+            if let Some((mangled_name, return_ty)) = self.operator_functions.get(&key).cloned() {
+                let temp_id = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Call {
+                        temp_id: Some(temp_id),
+                        function_name: mangled_name,
+                        args: vec![temp_id_1, temp_id_2],
+                        return_type: return_ty.clone(),
+                    })?;
+                return Ok((temp_id, return_ty));
+            }
+        }
+
+        //ist nicht struct _> dh. primitive
         let result_type = Self::get_binary_expr_result_type(&ir_type_1, binary_op, &ir_type_2)?;
 
         let tmp_var = self.next_temp_id();
@@ -417,6 +627,29 @@ impl IrGenerator {
             .add_instruction_to_current_block(instruction)?;
 
         return Ok((tmp_var, result_type));
+    }
+
+    fn binary_op_to_str(op: &BinaryOp) -> &'static str {
+        match op {
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Mod => "%",
+            BinaryOp::Eq => "==",
+            BinaryOp::Ne => "!=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Le => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Ge => ">=",
+            BinaryOp::And => "&&",
+            BinaryOp::Or => "||",
+            BinaryOp::BitAnd => "&",
+            BinaryOp::BitOr => "|",
+            BinaryOp::BitXor => "^",
+            BinaryOp::Shl => "<<",
+            BinaryOp::Shr => ">>",
+        }
     }
 
     fn convert_to_ir_binary_op(binary_op: &BinaryOp) -> IrBinaryOp {
@@ -443,22 +676,63 @@ impl IrGenerator {
     }
 
     fn gen_variable(&mut self, name: &str) -> Result<(TempId, IrType), CodegenError> {
-        let freie_temp_var = self.next_temp_id();
+        //geändert damit auch const/globals functionen
 
-        let var = self
-            .lookup_variable(name)
-            .ok_or_else(|| CodegenError::UnknownVariable(name.to_string()))?;
-        let ty = var.ty.clone();
-        let addr = var.addr;
+        if let Some(var) = self.lookup_variable(name) {
+            let ty = var.ty.clone();
+            let addr = var.addr;
+            let freie_temp_var = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::Load {
+                    temp_id: freie_temp_var,
+                    ty: ty.clone(),
+                    addr,
+                })?;
+            return Ok((freie_temp_var, ty));
+        }
 
-        self.block_handler
-            .add_instruction_to_current_block(IrInstruction::Load {
-                temp_id: freie_temp_var,
-                ty: ty.clone(),
-                addr,
-            })?;
+        let const_data = self
+            .module
+            .constants
+            .iter()
+            .find(|c| c.name == name)
+            .map(|c| (c.ty.clone(), c.value.clone()));
+        if let Some((ty, value)) = const_data {
+            let temp_id = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::PrimitiveConst {
+                    temp_id,
+                    ty: ty.clone(),
+                    value,
+                })?;
+            return Ok((temp_id, ty));
+        }
 
-        Ok((freie_temp_var, ty))
+        let global_data = self
+            .module
+            .globals
+            .iter()
+            .find(|g| g.name == name)
+            .map(|g| (g.name.clone(), g.ty.clone()));
+        if let Some((g_name, ty)) = global_data {
+            let addr_temp = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::GlobalAddr {
+                    temp_id: addr_temp,
+                    name: g_name,
+                    ty: ty.clone(),
+                })?;
+            let val_temp = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::Load {
+                    temp_id: val_temp,
+                    ty: ty.clone(),
+                    addr: addr_temp,
+                })?;
+            return Ok((val_temp, ty));
+        }
+
+        Err(CodegenError::UnknownVariable(name.to_string()))
     }
 
     fn gen_intliteral(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {

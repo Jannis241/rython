@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::fmt::format;
 
-use crate::ast::{Asm, ConstVar, Expr, Function, GlobalVar, Item, Param, StructField, Type};
-use crate::codegen::generator;
+use crate::ast::{Asm, Expr, Function, Item, Param, Type};
 use crate::ir::{
     IrBlock, IrConstant, IrField, IrFunction, IrGlobal, IrInstruction, IrModule, IrType,
     IrTypeDefinition, PrimitiveValue, TempId, Terminator,
@@ -21,6 +19,8 @@ pub struct IrGenerator {
     pub(super) block_handler: BlockHandler,
     pub(super) functions_return_type: HashMap<String, Option<IrType>>,
     pub(super) current_mangel_prefix: Vec<String>,
+    // (struct_name, operator_string) -> (mangled_function_name, return_type)
+    pub(super) operator_functions: HashMap<(String, String), (String, IrType)>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,12 +65,9 @@ impl BlockHandler {
         &mut self,
         instruction: IrInstruction,
     ) -> Result<(), CodegenError> {
-        // checken ob der block zu dem man instructions adden will schon terminated wurde,
-        // dann darf man nichts mehr hinzufügen
-        if self.blocks[self.current_block_index].terminator.is_some() {
-            return Err(CodegenError::CodeAfterTerminator);
-        }
-
+        // instrutons werden immer angehängt, auch wenn der block schon
+        // einen termiantor hat, mehrfache return in folge würden sonst direkt
+        // beim generieren des zweiten werts kaputt gehen
         self.blocks[self.current_block_index]
             .instructions
             .push(instruction);
@@ -78,26 +75,19 @@ impl BlockHandler {
     }
 
     pub fn add_terminator(&mut self, terminator: Terminator) -> Result<(), CodegenError> {
-        if self.blocks[self.current_block_index].terminator.is_some() {
-            return Err(CodegenError::CodeAfterTerminator);
-        }
+        // Terminator wird immer überschrieben, bei mehreren returns im selben
+        // block gewinnt der letzte
         self.blocks[self.current_block_index].terminator = Some(terminator);
         Ok(())
     }
 
-    pub fn finish_blocks(&self, return_type: &IrType) -> Result<Vec<IrBlock>, CodegenError> {
+    pub fn finish_blocks(&self, _return_type: &IrType) -> Result<Vec<IrBlock>, CodegenError> {
         let mut final_ir_blocks = Vec::new();
         for block in &self.blocks {
-            let block_terminator = match block.terminator.clone() {
-                Some(t) => Ok(t),
-                None => {
-                    if return_type == &IrType::Void {
-                        Ok(Terminator::Ret(None))
-                    } else {
-                        Err(CodegenError::MissingTerminator(block.label.clone()))
-                    }
-                }
-            }?;
+            // wenn der Block keinen terminator hat, default zu Ret(None).
+            // bei nicht void rückgabetyp ist das unvollständig,
+            // wird aber später im backend /einem zukünftigen pass abgefangen.
+            let block_terminator = block.terminator.clone().unwrap_or(Terminator::Ret(None));
             final_ir_blocks.push(IrBlock {
                 label: block.label.clone(),
                 instructions: block.instructions.clone(),
@@ -118,7 +108,8 @@ impl IrGenerator {
             block_handler: BlockHandler::init(),
             functions_return_type: HashMap::new(),
             module: IrModule::new(),
-            current_mangel_prefix: vec!["mangeld_".to_string()],
+            current_mangel_prefix: Vec::new(),
+            operator_functions: HashMap::new(),
         }
     }
 
@@ -126,8 +117,8 @@ impl IrGenerator {
         for (index, parameter) in params.iter().enumerate() {
             let parameter_type = Self::convert_to_ir_type(&parameter.param_type);
 
-            // Schritt 1: Platz für den Typ des Parameters allocaten und einen Pointer zu der
-            // Adresse in temp_var_alloc_pointer speichern
+            // 1. platz für den Typ des Parameters allocaten und einen poointer zu der
+            // Addr in temp_var_alloc_pointer speichern
             let temp_var_alloc_pointer = self.next_temp_id();
             let alloc_instruction = IrInstruction::Alloca {
                 temp_id: temp_var_alloc_pointer,
@@ -136,8 +127,8 @@ impl IrGenerator {
             self.block_handler
                 .add_instruction_to_current_block(alloc_instruction)?;
 
-            // Schritt 2: Den eigentlichen parameter in temp_var_value speichern (den wirklichen
-            // Wert)
+            // 2. den eigentlichen param in temp_var_value speichern (den wirklichen
+            // wert
             let temp_var_value = self.next_temp_id();
             let load_param_instruction = IrInstruction::LoadParam {
                 temp_id: temp_var_value,
@@ -147,10 +138,10 @@ impl IrGenerator {
             self.block_handler
                 .add_instruction_to_current_block(load_param_instruction)?;
 
-            // Schritt 3: Damit man dem Wert eine wirkliche Adresse zuweisen kann und nicht nur den
-            // wirklichen wert hat (wie in Schritt 2) wird der Wert einfach in dem vorher
-            // allocateten Space gestored.
-            // Jetzt hat man die Adresse des Wertes in temp_var_alloc_pointer und könnte die Value
+            // 3. damit man dem wert eine wirkliche Adrr zuweisen kann und nicht nur den
+            // wirklichen wert hat (wie in Schritt 2) wird der wert einfach in dem vorher
+            // allocateten platz gestored.
+            // dann hat man die Adrr des werts in temp_var_alloc_pointer und könnte die value
             // mit load wieder bekommen
             let load_param_instruction = IrInstruction::Store {
                 ty: parameter_type.clone(),
@@ -160,6 +151,7 @@ impl IrGenerator {
             self.block_handler
                 .add_instruction_to_current_block(load_param_instruction)?;
 
+            // Deswegen ist das Besser (hab ich von claude aber macht doch sind oder?)
             // Man könnte theoretisch auch direkt nur mit der value weiter machen welche man aus
             // load param bekommt ohne alloc und store.
             // Parameter sollen nur wie Variablen behandelt werden und das aktuelle Variablen modell
@@ -191,15 +183,12 @@ impl IrGenerator {
         &mut self,
         function: &Function,
     ) -> Result<IrFunction, CodegenError> {
-        self.add_to_current_mangel_prefix(function.name.clone());
         self.block_handler = BlockHandler::init(); // Block handler am anfang jeder funktion reseten
-        self.block_handler
-            .create_new_block(self.mangel("entry").as_str());
-        self.block_handler
-            .jump_to_block(self.mangel("entry").as_str());
+                                                   // Block-Labels sind funktionslokal, brauchen kein mangling.
+        self.block_handler.create_new_block("entry");
+        self.block_handler.jump_to_block("entry");
 
-        self.temp_counter = 0; // ------> @Jesko!!! Codex sagt das soll man so machen du handelst
-                               // das schon richtig in asm sonst nicht so sigma von dir
+        self.temp_counter = 0;
 
         // Für die neue Funktion alle vorherigen Scopes clearen
         self.scopes.clear();
@@ -236,8 +225,6 @@ impl IrGenerator {
 
         let name = self.mangel(function.name.clone());
 
-        self.pop_last_mangel_prefix();
-
         Ok(IrFunction {
             name,
             parameter: params,
@@ -266,7 +253,7 @@ impl IrGenerator {
                 other => IrType::Named(other.to_string()),
             },
             Type::AnyTrait(_) => {
-                todo!("traits not implemented in code gen")
+                todo!()
             }
         }
     }
@@ -290,29 +277,57 @@ impl IrGenerator {
         }
     }
 
+    // registriert die return typen aller struct methoden unter ihrem mangled namen
+    // damit method calls Struct_method(...) den richtigen typ finden
+    pub(super) fn preprocess_method_return_types(&mut self, items: &[Item]) {
+        for item in items {
+            if let Item::Struct(s) = item {
+                self.add_to_current_mangel_prefix(s.struct_name.clone());
+                for f in s.functions.iter() {
+                    let mangled = self.mangel(f.name.clone());
+                    let return_ty = if let Some(rt) = f.return_type.clone() {
+                        Some(IrGenerator::convert_to_ir_type(&rt))
+                    } else {
+                        None
+                    };
+                    self.functions_return_type.insert(mangled, return_ty);
+                }
+                self.pop_last_mangel_prefix();
+            }
+        }
+    }
+
     pub fn add_to_current_mangel_prefix<T: ToString>(&mut self, add: T) {
         self.current_mangel_prefix.push(add.to_string());
     }
     pub fn pop_last_mangel_prefix(&mut self) {
         self.current_mangel_prefix.pop();
     }
-    pub fn current_mangel(&self) -> String {
-        self.current_mangel_prefix.join("_")
-    }
-    pub(super) fn mangel<T: ToString>(&self, add: T) -> String {
-        self.current_mangel() + &add.to_string().as_str()
+
+    // mangling regel:
+    // - kein prefix aktiv  -> Name bleibt lgeich ("main" -> "main").
+    // - prefix aktiv       -> "<prefix1>_<prefix2>_..._<name>" ("Person" + "get_name" -> "Person_get_name").
+    pub(super) fn mangel<T: ToString>(&self, name: T) -> String {
+        if self.current_mangel_prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!(
+                "{}_{}",
+                self.current_mangel_prefix.join("_"),
+                name.to_string()
+            )
+        }
     }
 
     pub fn preprocces_type_defs(&mut self, items: &[Item]) -> Result<(), CodegenError> {
         for item in items {
             match item {
                 Item::Struct(structdef) => {
-                    self.add_to_current_mangel_prefix(structdef.struct_name.clone());
                     let mut ir_fields = vec![];
 
                     for parser_field in structdef.fields.iter() {
                         ir_fields.push(IrField {
-                            name: self.mangel(parser_field.field_name.clone()),
+                            name: parser_field.field_name.clone(),
                             ty: IrGenerator::convert_to_ir_type(&parser_field.field_type),
                         });
                     }
@@ -324,7 +339,6 @@ impl IrGenerator {
 
                     self.type_defs.push(typedef.clone());
                     self.module.types.push(typedef);
-                    self.pop_last_mangel_prefix();
                 }
                 Item::Variant(variantdef) => {
                     let typedef = IrTypeDefinition::Variant {
@@ -343,7 +357,10 @@ impl IrGenerator {
     }
     pub fn generate_code_inner(&mut self, items: &[Item]) -> Result<(), CodegenError> {
         self.preprocces_function_return_types(items);
-        self.preprocces_type_defs(items);
+        self.preprocess_method_return_types(items);
+        self.preprocces_type_defs(items)?;
+        self.preprocess_operators(items);
+        self.process_consts_and_globals(items)?;
 
         for item in items {
             match item {
@@ -366,21 +383,102 @@ impl IrGenerator {
                     self.pop_last_mangel_prefix();
                 }
                 Item::Variant(..) => continue, //wurde im ersten pass gemacht
-                Item::Import(..) => unimplemented!(),
-                Item::ConstVar(const_var) => unimplemented!(),
-                Item::GlobalVar(global_var) => unimplemented!(),
-                Item::Trait(..) => unimplemented!(),
-                Item::TraitImplementation(..) => unimplemented!(),
+                Item::ConstVar(..) | Item::GlobalVar(..) => continue, // schon in process_consts_and_globals
+                Item::Import(..) | Item::Trait(..) | Item::TraitImplementation(..) => {
+                    return Err(CodegenError::InvalidItem(item.clone()));
+                }
             };
         }
         return Ok(());
     }
 
-    pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
-        let mut generator = IrGenerator::new();
-
-        generator.generate_code_inner(items)?;
-
-        return Ok(generator.module);
+    pub(super) fn preprocess_operators(&mut self, items: &[Item]) {
+        // erzeugt die gleichen mangled Namen wie gen_func_struct für struct Methods.
+        for item in items {
+            if let Item::Struct(s) = item {
+                self.add_to_current_mangel_prefix(s.struct_name.clone());
+                for f in s.functions.iter() {
+                    if let Some(op) = &f.operator {
+                        let mangled = self.mangel(f.name.clone());
+                        let return_ty = f
+                            .return_type
+                            .as_ref()
+                            .map(Self::convert_to_ir_type)
+                            .unwrap_or(IrType::Void);
+                        self.operator_functions
+                            .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
+                    }
+                }
+                self.pop_last_mangel_prefix();
+            }
+        }
     }
+
+    pub(super) fn process_consts_and_globals(
+        &mut self,
+        items: &[Item],
+    ) -> Result<(), CodegenError> {
+        for item in items {
+            match item {
+                Item::ConstVar(const_var) => {
+                    let declared_ty = Self::convert_to_ir_type(&const_var.var_type);
+                    let (val_ty, val) = self.eval_const_expr(&const_var.value)?;
+                    if val_ty != declared_ty {
+                        return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
+                    }
+                    self.module.constants.push(IrConstant {
+                        name: const_var.var_name.clone(),
+                        ty: declared_ty,
+                        value: val,
+                    });
+                }
+                Item::GlobalVar(global_var) => {
+                    let declared_ty = Self::convert_to_ir_type(&global_var.var_type);
+                    let (val_ty, val) = self.eval_const_expr(&global_var.value)?;
+                    if val_ty != declared_ty {
+                        return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
+                    }
+                    self.module.globals.push(IrGlobal {
+                        name: global_var.var_name.clone(),
+                        ty: declared_ty,
+                        value: val,
+                    });
+                }
+                _ => continue,
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn eval_const_expr(
+        &self,
+        expr: &Expr,
+    ) -> Result<(IrType, PrimitiveValue), CodegenError> {
+        match expr {
+            Expr::IntLiteral(s) => {
+                let val: i64 = s
+                    .parse()
+                    .map_err(|_| CodegenError::InvalidIntLiteral(s.clone()))?;
+                Ok((IrType::I64, PrimitiveValue::Int(val)))
+            }
+            Expr::FloatLiteral(s) => {
+                let val: f64 = s
+                    .parse()
+                    .map_err(|_| CodegenError::InvalidFloatLiteral(s.clone()))?;
+                Ok((IrType::F64, PrimitiveValue::Float(val)))
+            }
+            Expr::BoolLiteral(b) => Ok((IrType::Bool, PrimitiveValue::Bool(*b))),
+            Expr::CharLiteral(c) => Ok((IrType::Char, PrimitiveValue::Char(*c))),
+            //Todo andere exprs machen die auch in ein const/ global gespeichert werden können
+            other => Err(CodegenError::InvalidExpr(other.clone())),
+        }
+    }
+}
+
+pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
+    let mut generator = IrGenerator::new();
+
+    generator.generate_code_inner(items)?;
+
+    return Ok(generator.module);
 }

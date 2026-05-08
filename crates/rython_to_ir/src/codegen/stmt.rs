@@ -6,7 +6,7 @@ use super::generator::IrGenerator;
 
 impl IrGenerator {
     pub(super) fn gen_let(&mut self, l: &Let) -> Result<(), CodegenError> {
-        let ir_type = Self::convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein???
+        let ir_type = Self::convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein??? -> für type inference später vllt zb let x = 10; -> jz grade muss man immer let x: iint = 19;
 
         let id_for_alloc = self.next_temp_id();
 
@@ -70,7 +70,6 @@ impl IrGenerator {
             })?;
         Ok(())
     }
-
 
     pub(super) fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), CodegenError> {
         match stmt {
