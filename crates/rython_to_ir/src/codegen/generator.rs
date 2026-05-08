@@ -337,16 +337,16 @@ pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
     return Ok(module);
 }
 
-fn mangel_struct_function(struct_name: String, function_name: String) -> String {
+pub fn mangel_struct_function(struct_name: String, function_name: String) -> String {
     format!("mangeld_{}_{}", struct_name, function_name)
 }
-fn mangel_function_var(function_name: String, var_name: String) -> String {
+pub fn mangel_function_var(function_name: String, var_name: String) -> String {
     format!("mangeld_{}_{}", function_name, var_name)
 }
-fn mangel_struct_var(struct_name: String, var_name: String) -> String {
+pub fn mangel_struct_var(struct_name: String, var_name: String) -> String {
     format!("mangeld_{}_{}", struct_name, var_name)
 }
-fn mangel_struct_function_var(
+pub fn mangel_struct_function_var(
     struct_name: String,
     function_name: String,
     var_name: String,
