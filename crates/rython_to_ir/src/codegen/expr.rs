@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::env::var;
 use std::iter::OnceWith;
 use std::ops::Deref;
 use std::os::linux::net::SocketAddrExt;
@@ -48,23 +49,17 @@ impl IrGenerator {
                 binary_op,
                 value,
             } => self.gen_binary_op_assign(target, binary_op, value),
-            Expr::FieldAccess { object, field_name } => unimplemented!(),
+            Expr::FieldAccess { object, field_name } => self.gen_field_access(object, fi),
         }
     }
 
-    fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
-        let (temp_id, _) = self.gen_struct_literal(
-            &"string".to_string(),
-            &vec![
-                ("length".to_string(), Expr::IntLiteral("0".to_string())),
-                ("start".to_string(), Expr::IntLiteral("0".to_string())),
-            ],
-        )?; //TODO names überall mangeln
+    fn gen_field_access(&mut self, object: Expr) -> Result<(), CodegenError> {}
 
-        self.gen_call(Expr::Variable(""), type_args, arguments)
+    fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
+        unimplemented!()
     }
 
-    fn gen_struct_literal(
+    pub(super) fn gen_struct_literal(
         &mut self,
         struct_name: &String,
         arguments: &Vec<(String, Expr)>,
@@ -98,6 +93,17 @@ impl IrGenerator {
                     ty: self.get_struct_field_typ(struct_name, field_name)?,
                 });
             argument_temp_ids.insert(field_name, arg_temp_id);
+            let name = self.mangel(field_name);
+            let var = super::Variable {
+                name: self.mangel(field_name),
+                ty: self.get_struct_field_typ(struct_name, field_name)?,
+                addr: arg_temp_id,
+            };
+            self.insert_variable_global(
+                format!("mangeld_{}_{}", struct_name, field_name),
+                self.get_struct_field_typ(struct_name, field_name)?,
+                arg_temp_id,
+            );
         }
 
         //dann checken ob alle fields angegeben wurden
@@ -504,9 +510,5 @@ impl IrGenerator {
             .add_instruction_to_current_block(new_const_instruction)?;
 
         Ok((temp_id, IrType::Bool))
-    }
-
-    fn mangel(&self, input: String) -> String {
-        self.scopes
     }
 }

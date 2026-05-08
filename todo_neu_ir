@@ -1,8 +1,7 @@
 Dinge Die So halb gemacht sind:
-    Names Überall Mangeln,
-    Generate Ir recursiv aufrufbar machen für structs
     Callee nicht nur für Variable machen sondern auch field Access -> mit name mangling
     String Literals designen und generaten
+    FieldAcces machen
     Operator Bei BinaryOp BinaryOpAssign, Postfix
     Generic Types mit any trait
 
@@ -10,5 +9,7 @@ Rest implementen:
     Stmts
     Exprs
     Traits Auflösen
+    Globals
+    Constants
     Errors Besser Machen
 

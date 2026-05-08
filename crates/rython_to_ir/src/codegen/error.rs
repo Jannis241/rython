@@ -6,6 +6,8 @@ pub enum CodegenError {
     InvalidItem(Item),
     MismatchedTypes(IrType, IrType), // expected type, got
 
+    ExpectedPrimitiveValue,
+
     InvalidBinaryOp(IrType, IrType), // zb 1 + true
     InvalidUnaryOp(IrType),
 
