@@ -103,7 +103,7 @@ pub enum IrInstruction {
 
     // functions
     Call {
-        temp_id: Option<TempId>, // Wert-Temp fuer den Rueckgabewert; None, wenn die Funktion void liefert.
+        temp_id: TempId, // Wert-Temp fuer den Rueckgabewert; None, wenn die Funktion void liefert.
         function_name: String,   // Name der aufgerufenen Funktion.
         args: Vec<TempId>,       // Wert-Temps der bereits berechneten Argumente.
         return_type: IrType,     // Rueckgabetyp der Funktion.

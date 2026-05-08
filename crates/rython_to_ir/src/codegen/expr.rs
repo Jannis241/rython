@@ -70,7 +70,16 @@ impl IrGenerator {
         object: &Box<Expr>,
         field_name: &String,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (obj_temp, obj_ty) = self.gen_expr(object)?;
+        let (obj_temp, obj_ty) = self.gen_expr(object)?; // Weiß nicht ob das so ganz funktioniert,
+        // weil du bekommst den wirklichen Wert von dem Objekt und nicht die adresse wo es
+        // gespeichert ist, weil self.gen_expr bei Variablen den wert returnt und nicht die adresse
+        // un ein struct kann ja eine variable sein.  Außer es ist irgendwie so, dass die wirkliche
+        // value vom struct einfach die adresse zum ersten feld ist, aber dann sollten wir vllt
+        // unten in der instruction base_addr zu first_field_addr oder sowas umbennen
+        //
+        // Also je nach dem ob du hier wirklich die value vom Struct bekommen willst oder die
+        // adresse wo diese value gespeichert ist
+        //
         let struct_name = Self::struct_name_from_ty(&obj_ty)
             .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
         let field_ty = self.get_struct_field_typ(&struct_name, field_name)?;
@@ -203,7 +212,7 @@ impl IrGenerator {
                 let temp_id = self.next_temp_id();
                 self.block_handler.add_instruction_to_current_block(
                     IrInstruction::Call {
-                        temp_id: Some(temp_id),
+                        temp_id: temp_id,
                         function_name: mangled,
                         args: vec![lhs_temp, idx_temp],
                         return_type: return_ty.clone(),
@@ -370,7 +379,7 @@ impl IrGenerator {
         let temp_id = self.next_temp_id();
         self.block_handler
             .add_instruction_to_current_block(IrInstruction::Call {
-                temp_id: Some(temp_id),
+                temp_id: temp_id,
                 function_name,
                 args: arg_temp_ids,
                 return_type: return_type.clone(),
@@ -407,7 +416,7 @@ impl IrGenerator {
         let temp_id = self.next_temp_id();
         self.block_handler
             .add_instruction_to_current_block(IrInstruction::Call {
-                temp_id: Some(temp_id),
+                temp_id: temp_id,
                 function_name: mangled,
                 args: arg_temp_ids,
                 return_type: return_type.clone(),
@@ -599,7 +608,7 @@ impl IrGenerator {
                 let temp_id = self.next_temp_id();
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
-                        temp_id: Some(temp_id),
+                        temp_id: temp_id,
                         function_name: mangled_name,
                         args: vec![temp_id_1, temp_id_2],
                         return_type: return_ty.clone(),
