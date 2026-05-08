@@ -8,6 +8,4 @@
 
 und bro was für gen_lvalue_place mach doch gute name gurt
 
-vllt macht es sinn den code noch kleiner aufzuteilen weil du hast einfach jetzt 300 zeilen oder so
-in einem file geaddet und dann ist immer schwer für die andere person noch zu checken was hier abgeht
 
