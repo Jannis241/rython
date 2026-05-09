@@ -117,10 +117,7 @@ impl IrGenerator {
     //Jannis slop fix!! yessirsky war ass (grr)
     // hilfsfunktion für l-werte: liefert die adresse und den typ.
     // unterstützt variable, feld zugriff und gruppierung
-    fn gen_lvalue_addr(
-        &mut self,
-        expr: &Box<Expr>,
-    ) -> Result<(TempId, IrType), CodegenError> {
+    fn gen_lvalue_addr(&mut self, expr: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
         match expr.deref() {
             Expr::Variable(name) => {
                 let var = self
@@ -128,9 +125,7 @@ impl IrGenerator {
                     .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
                 Ok((var.addr, var.ty.clone()))
             }
-            Expr::FieldAccess { object, field_name } => {
-                self.gen_field_addr(object, field_name)
-            }
+            Expr::FieldAccess { object, field_name } => self.gen_field_addr(object, field_name),
             Expr::Grouping(inner) => self.gen_lvalue_addr(inner),
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }
@@ -210,23 +205,19 @@ impl IrGenerator {
                 let struct_name = Self::struct_name_from_ty(&lhs_ty)
                     .ok_or_else(|| CodegenError::UnknownType(format!("{lhs_ty:?}")))?;
                 let key = (struct_name.clone(), "[]".to_string());
-                let (mangled, return_ty) = self
-                    .operator_functions
-                    .get(&key)
-                    .cloned()
-                    .ok_or_else(|| {
+                let (mangled, return_ty) =
+                    self.operator_functions.get(&key).cloned().ok_or_else(|| {
                         CodegenError::UnknownFunction(format!("{}_[]", struct_name))
                     })?;
 
                 let temp_id = self.next_temp_id();
-                self.block_handler.add_instruction_to_current_block(
-                    IrInstruction::Call {
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,
                         function_name: mangled,
                         args: vec![lhs_temp, idx_temp],
                         return_type: return_ty.clone(),
-                    },
-                )?;
+                    })?;
                 Ok((temp_id, return_ty))
             }
         }
