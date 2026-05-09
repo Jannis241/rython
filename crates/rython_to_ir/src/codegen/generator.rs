@@ -33,7 +33,6 @@ pub struct BlockHandler {
 #[derive(Debug, Clone)]
 pub struct WorkingBlock {
     label: String,
-    block_id: usize,
     instructions: Vec<IrInstruction>,
     terminator: Option<Terminator>,
 }
@@ -51,12 +50,7 @@ impl BlockHandler {
             label: format!("{name}:"),
             instructions: Vec::new(),
             terminator: None,
-            block_id: self.blocks.len() + 1,
         });
-    }
-
-    pub fn get_current_block_id(&self) -> usize {
-        self.blocks[self.current_block_index].block_id
     }
 
     pub fn jump_to_block(&mut self, label: &str) {

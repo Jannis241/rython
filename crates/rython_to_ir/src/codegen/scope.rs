@@ -44,9 +44,9 @@ impl IrGenerator {
     }
 
     pub(super) fn lookup_variable(&self, name: &str, scope: Option<usize>) -> Option<&Variable> {
-        match scope {
-            Some(s) => {}
-            None => {}
-        }
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.symbols.get(name))
     }
 }
