@@ -23,7 +23,7 @@ impl IrGenerator {
                 binary_op,
                 rhs,
             } => self.gen_binary_op(lhs, binary_op, rhs),
-            Expr::NullLiteral => unimplemented!(),
+            Expr::NullLiteral => unimplemented!(), //vllt noch später machen
             Expr::CharLiteral(character) => self.gen_charliteral(*character),
             Expr::ListLiteral(inner) => self.gen_list_literal(inner),
             Expr::Call {
@@ -49,13 +49,13 @@ impl IrGenerator {
 
     fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
         let struct_literal = Expr::StructLiteral {
-            struct_name: "String".into(),
+            struct_name: "string".into(),
             arguments: vec![
                 ("start".to_string(), Expr::IntLiteral("0".to_string())),
                 ("length".to_string(), Expr::IntLiteral("0".to_string())),
             ],
         };
-        let (temp_id, ir_ty) = match struct_literal.clone() {
+        let (temp_id, ir_ty) = match &struct_literal {
             Expr::StructLiteral {
                 struct_name,
                 arguments,
@@ -63,18 +63,20 @@ impl IrGenerator {
             _ => unreachable!(),
         };
 
-        self.gen_method_call(
-            &Box::new(struct_literal.clone()),
+        self.gen_method_call_with_temp_id(
+            temp_id,
+            ir_ty.clone(),
             &"init_start".to_string(),
             &vec![],
-        );
+        )?;
 
         for character in value.chars() {
-            self.gen_method_call(
-                &Box::new(struct_literal.clone()),
+            self.gen_method_call_with_temp_id(
+                temp_id,
+                ir_ty.clone(),
                 &"push_char".to_string(),
                 &vec![Expr::CharLiteral(character)],
-            );
+            )?;
         }
 
         Ok((temp_id, ir_ty))
@@ -83,7 +85,39 @@ impl IrGenerator {
         &mut self,
         values: &Vec<Box<Expr>>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        unimplemented!()
+        let struct_literal = Expr::StructLiteral {
+            struct_name: "list".into(),
+            arguments: vec![
+                ("start".to_string(), Expr::IntLiteral("0".to_string())),
+                ("length".to_string(), Expr::IntLiteral("0".to_string())),
+            ],
+        };
+        let (temp_id, ir_ty) = match &struct_literal {
+            Expr::StructLiteral {
+                struct_name,
+                arguments,
+            } => self.gen_struct_literal(&struct_name, &arguments)?,
+            _ => unreachable!(),
+        };
+
+        self.gen_method_call_with_temp_id(
+            temp_id,
+            ir_ty.clone(),
+            &"init_start".to_string(),
+            &vec![],
+        )?;
+
+        for expr in values {
+            self.gen_method_call_with_temp_id(
+                temp_id,
+                ir_ty.clone(),
+                &"push_element".to_string(),
+                &vec![*expr.clone()], // achtung kann nicht values direkt sein, weil push_element
+                                      // immer nur einzelnend ein element pusht
+            )?;
+        }
+
+        Ok((temp_id, ir_ty))
     }
 
     fn gen_field_access(
@@ -424,6 +458,40 @@ impl IrGenerator {
         Ok((temp_id, return_type))
     }
 
+    fn gen_method_call_with_temp_id(
+        &mut self,
+        obj_temp: TempId,
+        obj_ty: IrType,
+        method_name: &String,
+        arguments: &Vec<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let struct_name = Self::struct_name_from_ty(&obj_ty)
+            .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
+        let mangled = format!("{}_{}", struct_name, method_name);
+
+        let mut arg_temp_ids = vec![obj_temp];
+        for arg in arguments {
+            arg_temp_ids.push(self.gen_expr(arg)?.0);
+        }
+
+        let return_type = self
+            .functions_return_type
+            .get(&mangled)
+            .ok_or_else(|| CodegenError::UnknownFunction(mangled.clone()))?
+            .clone()
+            .unwrap_or(IrType::Void);
+
+        let temp_id = self.next_temp_id();
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::Call {
+                temp_id: temp_id,
+                function_name: mangled,
+                args: arg_temp_ids,
+                return_type: return_type.clone(),
+            })?;
+
+        Ok((temp_id, return_type))
+    }
     // ruft eine methode auf einem objekt auf
     // das objekt wird automatisch als erstes argument vor die user args gepackt
 
