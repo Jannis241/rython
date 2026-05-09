@@ -201,6 +201,8 @@ impl IrGenerator {
         &mut self,
         function: &Function,
     ) -> Result<IrFunction, CodegenError> {
+        // alle vorherigen scopes löschen, da wir wieder in einer neuen function sind
+        self.scopes.clear();
         // Block handler initalizen, den entry block erstellen und zu ihm jumpen
         self.block_handler = BlockHandler::init();
         self.block_handler.create_new_block("entry");
