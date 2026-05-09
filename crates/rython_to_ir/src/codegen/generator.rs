@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ast::{Asm, Expr, Function, Item, Param, Type};
+use crate::codegen::generator;
 use crate::ir::{
     IrBlock, IrConstant, IrField, IrFunction, IrGlobal, IrInstruction, IrModule, IrType,
     IrTypeDefinition, PrimitiveValue, TempId, Terminator,
@@ -32,6 +33,7 @@ pub struct BlockHandler {
 #[derive(Debug, Clone)]
 pub struct WorkingBlock {
     label: String,
+    block_id: usize,
     instructions: Vec<IrInstruction>,
     terminator: Option<Terminator>,
 }
@@ -49,7 +51,12 @@ impl BlockHandler {
             label: format!("{name}:"),
             instructions: Vec::new(),
             terminator: None,
+            block_id: self.blocks.len() + 1,
         });
+    }
+
+    pub fn get_current_block_id(&self) -> usize {
+        self.blocks[self.current_block_index].block_id
     }
 
     pub fn jump_to_block(&mut self, label: &str) {
@@ -200,17 +207,18 @@ impl IrGenerator {
         &mut self,
         function: &Function,
     ) -> Result<IrFunction, CodegenError> {
-        self.block_handler = BlockHandler::init(); // Block handler am anfang jeder funktion reseten
-                                                   // Block-Labels sind funktionslokal, brauchen kein mangling.
+        // Block handler initalizen, den entry block erstellen und zu ihm jumpen
+        self.block_handler = BlockHandler::init();
         self.block_handler.create_new_block("entry");
         self.block_handler.jump_to_block("entry");
 
-        self.temp_counter = 0;
-
-        // Für die neue Funktion alle vorherigen Scopes clearen
-        self.scopes.clear();
+        // Neuer scope erstellen, da wir in einer neuen funktion sind
         self.enter_scope();
 
+        // Temp variable counter reseten, da er für jede funktion wieder bei 0 anfängt
+        self.temp_counter = 0;
+
+        // return type bekommen
         self.current_expected_return_type = Self::convert_to_ir_type(
             &function
                 .return_type
@@ -218,12 +226,16 @@ impl IrGenerator {
                 .unwrap_or(Type::Named("void".to_string())),
         );
 
+        // parameter handeln
         self.handle_parameters(&function.params)?;
 
+        // alle statements in der function generieren
         for stmt in &function.body.statements {
             self.gen_stmt(stmt)?;
         }
 
+        // man ist am ende also exited man den scope -> (maybe unnötig weil man eh immer alle scopes
+        // am anfang cleart aber so ist klarer was passiert)
         self.exit_scope();
 
         // checkt einfach nur ob jeder Block einen Terminator hat
@@ -231,6 +243,7 @@ impl IrGenerator {
             .block_handler
             .finish_blocks(&self.current_expected_return_type)?;
 
+        // Parameter zu IrField machen
         let params = function
             .params
             .iter()
@@ -240,8 +253,10 @@ impl IrGenerator {
             })
             .collect();
 
+        // function name mangeln
         let name = self.mangel(function.name.clone());
 
+        // Fertige funktion bauen und returnen
         Ok(IrFunction {
             name,
             parameter: params,

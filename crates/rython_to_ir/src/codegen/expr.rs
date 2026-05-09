@@ -4,6 +4,7 @@ use std::ops::Deref;
 use super::error::CodegenError;
 use super::generator::IrGenerator;
 use crate::ast::{BinaryOp, Expr, PostFixOp, Type, UnaryOp};
+use crate::codegen::generator;
 use crate::ir::{
     IrBinaryOp, IrField, IrInstruction, IrType, IrTypeDefinition, IrUnaryOp, PrimitiveValue, TempId,
 };
@@ -73,7 +74,7 @@ impl IrGenerator {
         object: &Box<Expr>,
         field_name: &String,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (lv_addr, lv_ty) = self.gen_lvalue_addr(object)?;
+        let (lv_addr, lv_ty) = self.gen_left_value_addr(object)?;
         let (base_addr, struct_ty) = match &lv_ty {
             IrType::Pointer(_) => {
                 let loaded = self.next_temp_id();
@@ -117,7 +118,8 @@ impl IrGenerator {
     //Jannis slop fix!! yessirsky war ass (grr)
     // hilfsfunktion für l-werte: liefert die adresse und den typ.
     // unterstützt variable, feld zugriff und gruppierung
-    fn gen_lvalue_addr(&mut self, expr: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
+
+    fn gen_left_value_addr(&mut self, expr: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
         match expr.deref() {
             Expr::Variable(name) => {
                 let var = self
@@ -126,7 +128,7 @@ impl IrGenerator {
                 Ok((var.addr, var.ty.clone()))
             }
             Expr::FieldAccess { object, field_name } => self.gen_field_addr(object, field_name),
-            Expr::Grouping(inner) => self.gen_lvalue_addr(inner),
+            Expr::Grouping(inner) => self.gen_left_value_addr(inner),
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }
     }
@@ -143,7 +145,7 @@ impl IrGenerator {
         match op {
             PostFixOp::PlusPlus | PostFixOp::MinusMinus => {
                 // l-wert holen aus variable oder feld zugriff
-                let (target_addr, target_ty) = self.gen_lvalue_addr(value)?;
+                let (target_addr, target_ty) = self.gen_left_value_addr(value)?;
 
                 if target_ty != IrType::I64 && target_ty != IrType::F64 {
                     return Err(CodegenError::InvalidUnaryOp(target_ty));
@@ -390,6 +392,7 @@ impl IrGenerator {
 
     // ruft eine methode auf einem objekt auf
     // das objekt wird automatisch als erstes argument vor die user args gepackt
+
     fn gen_method_call(
         &mut self,
         object: &Box<Expr>,
