@@ -35,15 +35,18 @@ impl IrGenerator {
             .insert(name.clone(), Variable { name, ty, addr });
     }
 
-    pub(super) fn insert_variable_global(&mut self, name: String, ty: IrType, addr: TempId) {
-        self.scopes
-            .first_mut()
-            .expect("No active scope")
-            .symbols
-            .insert(name.clone(), Variable { name, ty, addr });
-    }
+    // brauchen wir glaube ich nicht, da constants und globals in module gespeichert werden und in
+    // gen_var aufgerufen werden
+    //
+    // pub(super) fn insert_variable_global(&mut self, name: String, ty: IrType, addr: TempId) {
+    //     self.scopes
+    //         .first_mut()
+    //         .expect("No active scope")
+    //         .symbols
+    //         .insert(name.clone(), Variable { name, ty, addr });
+    // }
 
-    pub(super) fn lookup_variable(&self, name: &str, scope: Option<usize>) -> Option<&Variable> {
+    pub(super) fn lookup_variable(&self, name: &str) -> Option<&Variable> {
         self.scopes
             .iter()
             .rev()
