@@ -19,6 +19,9 @@ pub enum CodegenError {
     UnknownField(String),
     UnknownType(String),
 
+    AssignToConst(String),
+    DuplicateGlobal(String),
+
     FieldsDontMatch,
 
     AmbigousVariable(String),

@@ -192,7 +192,7 @@ impl IrGenerator {
                 parameter.name.clone(),
                 parameter_type,
                 temp_var_alloc_pointer,
-            );
+            )?;
         }
         Ok(())
     }
@@ -201,8 +201,12 @@ impl IrGenerator {
         &mut self,
         function: &Function,
     ) -> Result<IrFunction, CodegenError> {
-        // alle vorherigen scopes löschen, da wir wieder in einer neuen function sind
-        self.scopes.clear();
+        debug_assert!(
+            self.scopes.is_empty(),
+            "previous function didnt clear all scopes: {:?}",
+            self.scopes
+        );
+
         // Block handler initalizen, den entry block erstellen und zu ihm jumpen
         self.block_handler = BlockHandler::init();
         self.block_handler.create_new_block("entry");
@@ -449,25 +453,37 @@ impl IrGenerator {
         for item in items {
             match item {
                 Item::ConstVar(const_var) => {
+                    let name = &const_var.var_name;
+                    if self.module.constants.iter().any(|c| &c.name == name)
+                        || self.module.globals.iter().any(|g| &g.name == name)
+                    {
+                        return Err(CodegenError::DuplicateGlobal(name.clone()));
+                    }
                     let declared_ty = Self::convert_to_ir_type(&const_var.var_type);
                     let (val_ty, val) = self.eval_const_expr(&const_var.value)?;
                     if val_ty != declared_ty {
                         return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
                     }
                     self.module.constants.push(IrConstant {
-                        name: const_var.var_name.clone(),
+                        name: name.clone(),
                         ty: declared_ty,
                         value: val,
                     });
                 }
                 Item::GlobalVar(global_var) => {
+                    let name = &global_var.var_name;
+                    if self.module.constants.iter().any(|c| &c.name == name)
+                        || self.module.globals.iter().any(|g| &g.name == name)
+                    {
+                        return Err(CodegenError::DuplicateGlobal(name.clone()));
+                    }
                     let declared_ty = Self::convert_to_ir_type(&global_var.var_type);
                     let (val_ty, val) = self.eval_const_expr(&global_var.value)?;
                     if val_ty != declared_ty {
                         return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
                     }
                     self.module.globals.push(IrGlobal {
-                        name: global_var.var_name.clone(),
+                        name: name.clone(),
                         ty: declared_ty,
                         value: val,
                     });

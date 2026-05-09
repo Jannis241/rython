@@ -189,15 +189,36 @@ impl IrGenerator {
     }
 
     //Jannis slop fix!! yessirsky war ass (grr)
-    // hilfsfunktion für l-werte: liefert die adresse und den typ.
-    // unterstützt variable, feld zugriff und gruppierung
+    // hilfsfunktion für left-werte: liefert die adresse und den typ.
+    // unterstützt variable (lokal/global), feld zugriff und gruppierung.
+    // konsts haben keine zuweisbare adresse -> AssignToConst.
     fn gen_left_value_addr(&mut self, expr: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
         match expr.deref() {
             Expr::Variable(name) => {
-                let var = self
-                    .lookup_variable(name)
-                    .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
-                Ok((var.addr, var.ty.clone()))
+                if let Some(var) = self.lookup_variable(name) {
+                    return Ok((var.addr, var.ty.clone()));
+                }
+                if self.module.constants.iter().any(|c| c.name == *name) {
+                    return Err(CodegenError::AssignToConst(name.clone()));
+                }
+                if let Some(global) = self
+                    .module
+                    .globals
+                    .iter()
+                    .find(|g| g.name == *name)
+                    .cloned()
+                {
+                    let addr_temp = self.next_temp_id();
+                    self.block_handler.add_instruction_to_current_block(
+                        IrInstruction::GlobalAddr {
+                            temp_id: addr_temp,
+                            name: global.name,
+                            ty: global.ty.clone(),
+                        },
+                    )?;
+                    return Ok((addr_temp, global.ty));
+                }
+                Err(CodegenError::UnknownVariable(name.clone()))
             }
             Expr::FieldAccess { object, field_name } => self.gen_field_addr(object, field_name),
             Expr::Grouping(inner) => self.gen_left_value_addr(inner),
@@ -212,7 +233,7 @@ impl IrGenerator {
     ) -> Result<(TempId, IrType), CodegenError> {
         match op {
             PostFixOp::PlusPlus | PostFixOp::MinusMinus => {
-                // l-wert holen aus variable oder feld zugriff
+                // left-wert holen aus variable oder feld zugriff
                 let (target_addr, target_ty) = self.gen_left_value_addr(value)?;
 
                 if target_ty != IrType::I64 && target_ty != IrType::F64 {
@@ -565,24 +586,11 @@ impl IrGenerator {
         target: &Box<Expr>,
         value: &Box<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let t = target.deref();
-
-        let (addr, target_type) = match t {
-            Expr::Variable(name) => {
-                let variable = self
-                    .lookup_variable(name)
-                    .ok_or_else(|| CodegenError::UnknownVariable(name.clone()))?;
-
-                (variable.addr, variable.ty.clone())
-            }
-            Expr::PostFix { Op, value } => unimplemented!(),
-            Expr::FieldAccess { object, field_name } => unimplemented!(),
-            other => return Err(CodegenError::InvalidExpr(other.clone())),
-        };
+        let (addr, target_type) = self.gen_left_value_addr(target)?;
 
         let (temp_value_var, value_type) = self.gen_expr(value)?;
 
-        if (target_type != value_type) {
+        if target_type != value_type {
             return Err(CodegenError::MismatchedTypes(
                 target_type.clone(),
                 value_type,
@@ -790,8 +798,6 @@ impl IrGenerator {
     }
 
     fn gen_variable(&mut self, name: &str) -> Result<(TempId, IrType), CodegenError> {
-        //geändert damit auch const/globals functionen
-
         let const_data = self
             .module
             .constants
@@ -805,14 +811,6 @@ impl IrGenerator {
             .find(|g| g.name == name)
             .map(|g| (g.name.clone(), g.ty.clone()));
         let looked_up_var = self.lookup_variable(name);
-
-        if looked_up_var.is_some() as i32
-            + const_data.is_some() as i32
-            + global_data.is_some() as i32
-            > 1
-        {
-            return Err(CodegenError::AmbigousVariable(name.to_string()));
-        }
 
         if let Some((ty, value)) = const_data {
             let temp_id = self.next_temp_id();

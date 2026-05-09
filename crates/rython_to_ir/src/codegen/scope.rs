@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::ir::{IrType, TempId};
 
+use super::error::CodegenError;
 use super::generator::IrGenerator;
 
 #[derive(Debug, Clone)]
@@ -24,15 +25,28 @@ impl IrGenerator {
     }
 
     pub(super) fn exit_scope(&mut self) {
-        self.scopes.pop();
+        self.scopes.pop().expect("No active scope to exit");
     }
 
-    pub(super) fn insert_variable(&mut self, name: String, ty: IrType, addr: TempId) {
+    pub(super) fn insert_variable(
+        &mut self,
+        name: String,
+        ty: IrType,
+        addr: TempId,
+    ) -> Result<(), CodegenError> {
+        //aamgibouity check
+        if self.module.constants.iter().any(|c| c.name == name)
+            || self.module.globals.iter().any(|g| g.name == name)
+        {
+            return Err(CodegenError::AmbigousVariable(name));
+        }
+
         self.scopes
             .last_mut()
             .expect("No active scope")
             .symbols
             .insert(name.clone(), Variable { name, ty, addr });
+        Ok(())
     }
 
     // brauchen wir glaube ich nicht, da constants und globals in module gespeichert werden und in

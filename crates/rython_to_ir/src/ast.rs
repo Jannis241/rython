@@ -240,7 +240,10 @@ pub enum Expr {
         struct_name: String,
         arguments: Vec<(String, Expr)>,
     },
-
+    // VariantLiteral {
+    //     struct_name: String,
+    //     arguments: Vec<(String, Expr)>,
+    // },
     Grouping(Box<Expr>),
 }
 

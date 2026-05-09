@@ -29,7 +29,7 @@ impl IrGenerator {
                 addr: id_for_alloc,
             })?;
 
-        self.insert_variable(l.var_name.clone(), ir_type, id_for_alloc);
+        self.insert_variable(l.var_name.clone(), ir_type, id_for_alloc)?;
 
         Ok(())
     }
