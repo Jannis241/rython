@@ -25,7 +25,7 @@ impl IrGenerator {
             } => self.gen_binary_op(lhs, binary_op, rhs),
             Expr::NullLiteral => unimplemented!(),
             Expr::CharLiteral(character) => self.gen_charliteral(*character),
-            Expr::ListLiteral(inner) => unimplemented!(),
+            Expr::ListLiteral(inner) => self.gen_list_literal(inner),
             Expr::Call {
                 callee,
                 type_args,
@@ -45,6 +45,45 @@ impl IrGenerator {
             } => self.gen_binary_op_assign(target, binary_op, value),
             Expr::FieldAccess { object, field_name } => self.gen_field_access(object, field_name),
         }
+    }
+
+    fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
+        let struct_literal = Expr::StructLiteral {
+            struct_name: "String".into(),
+            arguments: vec![
+                ("start".to_string(), Expr::IntLiteral("0".to_string())),
+                ("length".to_string(), Expr::IntLiteral("0".to_string())),
+            ],
+        };
+        let (temp_id, ir_ty) = match struct_literal.clone() {
+            Expr::StructLiteral {
+                struct_name,
+                arguments,
+            } => self.gen_struct_literal(&struct_name, &arguments)?,
+            _ => unreachable!(),
+        };
+
+        self.gen_method_call(
+            &Box::new(struct_literal.clone()),
+            &"init_start".to_string(),
+            &vec![],
+        );
+
+        for character in value.chars() {
+            self.gen_method_call(
+                &Box::new(struct_literal.clone()),
+                &"push_char".to_string(),
+                &vec![Expr::CharLiteral(character)],
+            );
+        }
+
+        Ok((temp_id, ir_ty))
+    }
+    fn gen_list_literal(
+        &mut self,
+        values: &Vec<Box<Expr>>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        unimplemented!()
     }
 
     fn gen_field_access(
@@ -130,10 +169,6 @@ impl IrGenerator {
             Expr::Grouping(inner) => self.gen_left_value_addr(inner),
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }
-    }
-
-    fn gen_string_literal(&mut self, _value: &str) -> Result<(TempId, IrType), CodegenError> {
-        unimplemented!()
     }
 
     fn gen_postfix(
