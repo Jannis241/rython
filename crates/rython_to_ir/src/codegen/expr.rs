@@ -47,8 +47,49 @@ impl IrGenerator {
             Expr::VariantLiteral {
                 variant_name,
                 case_name,
-            } => todo!(),
+            } => self.gen_variant_literal(variant_name, case_name),
         }
+    }
+
+    fn gen_variant_literal(
+        &mut self,
+        variant_name: &String,
+        case_name: &String,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        let cases = self.get_variant_cases(variant_name)?;
+
+        let case_idx = cases
+            .iter()
+            .position(|c| c == case_name)
+            .ok_or(CodegenError::UnknownField(case_name.clone()))?;
+
+        self.gen_intliteral(&case_idx.to_string())
+    }
+
+    fn get_variant_cases(&self, variant_name: &String) -> Result<Vec<String>, CodegenError> {
+        let mut found_variant = false;
+
+        let mut found_cases = None;
+
+        for typedef in self.type_defs.iter() {
+            let IrTypeDefinition::Variant { name, cases } = typedef else {
+                continue;
+            };
+
+            if name == variant_name {
+                if found_variant {
+                    return Err(CodegenError::AmbigousType(variant_name.clone()));
+                }
+                found_variant = true;
+                found_cases = Some(cases);
+            }
+        }
+
+        if found_cases.is_none() {
+            return Err(CodegenError::UnknownType(variant_name.clone()));
+        }
+
+        Ok(found_cases.unwrap().clone())
     }
 
     fn gen_string_literal(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
