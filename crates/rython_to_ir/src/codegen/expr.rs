@@ -118,7 +118,6 @@ impl IrGenerator {
     //Jannis slop fix!! yessirsky war ass (grr)
     // hilfsfunktion für l-werte: liefert die adresse und den typ.
     // unterstützt variable, feld zugriff und gruppierung
-
     fn gen_left_value_addr(&mut self, expr: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
         match expr.deref() {
             Expr::Variable(name) => {
@@ -690,25 +689,28 @@ impl IrGenerator {
     fn gen_variable(&mut self, name: &str) -> Result<(TempId, IrType), CodegenError> {
         //geändert damit auch const/globals functionen
 
-        if let Some(var) = self.lookup_variable(name) {
-            let ty = var.ty.clone();
-            let addr = var.addr;
-            let freie_temp_var = self.next_temp_id();
-            self.block_handler
-                .add_instruction_to_current_block(IrInstruction::Load {
-                    temp_id: freie_temp_var,
-                    ty: ty.clone(),
-                    addr,
-                })?;
-            return Ok((freie_temp_var, ty));
-        }
-
         let const_data = self
             .module
             .constants
             .iter()
             .find(|c| c.name == name)
             .map(|c| (c.ty.clone(), c.value.clone()));
+        let global_data = self
+            .module
+            .globals
+            .iter()
+            .find(|g| g.name == name)
+            .map(|g| (g.name.clone(), g.ty.clone()));
+        let looked_up_var = self.lookup_variable(name);
+
+        if looked_up_var.is_some() as i32
+            + const_data.is_some() as i32
+            + global_data.is_some() as i32
+            > 1
+        {
+            return Err(CodegenError::AmbigousVariable(name.to_string()));
+        }
+
         if let Some((ty, value)) = const_data {
             let temp_id = self.next_temp_id();
             self.block_handler
@@ -720,12 +722,6 @@ impl IrGenerator {
             return Ok((temp_id, ty));
         }
 
-        let global_data = self
-            .module
-            .globals
-            .iter()
-            .find(|g| g.name == name)
-            .map(|g| (g.name.clone(), g.ty.clone()));
         if let Some((g_name, ty)) = global_data {
             let addr_temp = self.next_temp_id();
             self.block_handler
@@ -742,6 +738,19 @@ impl IrGenerator {
                     addr: addr_temp,
                 })?;
             return Ok((val_temp, ty));
+        }
+
+        if let Some(var) = looked_up_var {
+            let ty = var.ty.clone();
+            let addr = var.addr;
+            let freie_temp_var = self.next_temp_id();
+            self.block_handler
+                .add_instruction_to_current_block(IrInstruction::Load {
+                    temp_id: freie_temp_var,
+                    ty: ty.clone(),
+                    addr,
+                })?;
+            return Ok((freie_temp_var, ty));
         }
 
         Err(CodegenError::UnknownVariable(name.to_string()))
