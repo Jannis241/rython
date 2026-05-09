@@ -418,6 +418,18 @@ impl Parser {
                 self.advance()?;
                 if self.allow_struct_literal && self.current()?.kind == TokenKind::LBrace {
                     self.parse_struct_literal(curr.value)
+                } else if self.current()?.kind == TokenKind::Colon
+                    && self.peek().is_ok()
+                    && self.peek()?.kind == TokenKind::Ident
+                {
+                    // variant literal: MyVar:MyCase
+                    self.advance()?; // konsumiert ':'
+                    let case_token = self.current()?;
+                    self.advance()?; // konsumiert den case ident
+                    Ok(Expr::VariantLiteral {
+                        variant_name: curr.value,
+                        case_name: case_token.value,
+                    })
                 } else {
                     Ok(Expr::Variable(curr.value))
                 }

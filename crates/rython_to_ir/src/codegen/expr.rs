@@ -44,6 +44,10 @@ impl IrGenerator {
                 value,
             } => self.gen_binary_op_assign(target, binary_op, value),
             Expr::FieldAccess { object, field_name } => self.gen_field_access(object, field_name),
+            Expr::VariantLiteral {
+                variant_name,
+                case_name,
+            } => todo!(),
         }
     }
 
