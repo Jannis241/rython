@@ -307,12 +307,14 @@ impl Parser {
                     expr = self.finish_call(expr, Vec::new())?;
                 }
                 TokenKind::ColonColon => {
-                    // turbofish: expr::<T, U, ...>(args)
-                    self.advance()?;
-                    self.expect_current(TokenKind::Lt)?;
-                    let type_args = self.parse_type_args()?;
-                    self.expect_current(TokenKind::LParen)?;
-                    expr = self.finish_call(expr, type_args)?;
+                    // TODO kein turbofish ????j
+                    // // turbofish: expr::<T, U, ...>(args)
+                    // self.advance()?;
+                    // self.expect_current(TokenKind::Lt)?;
+                    // let type_args = self.parse_type_args()?;
+                    // self.expect_current(TokenKind::LParen)?;
+                    // expr = self.finish_call(expr, type_args)?;
+                    unimplemented!()
                 }
                 TokenKind::Dot => {
                     self.advance()?;
@@ -558,6 +560,10 @@ impl Parser {
                 self.advance()?;
                 let mut bounds = vec![];
                 loop {
+                    // self.expect_current(TokenKind::Any)?; //TODO ????????? wollen wir das so
+                    // haben?????ß
+                    // self.advance()?;
+
                     self.expect_current(TokenKind::Ident)?;
                     let bound_name = self.current()?.value;
                     bounds.push(TraitBound {

@@ -2447,31 +2447,31 @@ fn variant_case_access_is_field_access() {
 
 // ===== Generics on call sites (turbofish) =====
 
-#[test]
-fn turbofish_passes_type_args_to_call() {
-    let expr = parse_expr_source("make::<int>(5)").unwrap();
-    dbg_eq(
-        expr,
-        Expr::Call {
-            callee: Box::new(Expr::Variable("make".into())),
-            type_args: vec![Type::Named("int".into())],
-            arguments: vec![Expr::IntLiteral("5".into())],
-        },
-    );
-}
-
-#[test]
-fn turbofish_supports_multiple_type_args() {
-    let expr = parse_expr_source("pair::<int, bool>()").unwrap();
-    dbg_eq(
-        expr,
-        Expr::Call {
-            callee: Box::new(Expr::Variable("pair".into())),
-            type_args: vec![Type::Named("int".into()), Type::Named("bool".into())],
-            arguments: vec![],
-        },
-    );
-}
+// #[test]
+// fn turbofish_passes_type_args_to_call() {
+//     let expr = parse_expr_source("make::<int>(5)").unwrap();
+//     dbg_eq(
+//         expr,
+//         Expr::Call {
+//             callee: Box::new(Expr::Variable("make".into())),
+//             type_args: vec![Type::Named("int".into())],
+//             arguments: vec![Expr::IntLiteral("5".into())],
+//         },
+//     );
+// }
+//
+// #[test]
+// fn turbofish_supports_multiple_type_args() {
+//     let expr = parse_expr_source("pair::<int, bool>()").unwrap();
+//     dbg_eq(
+//         expr,
+//         Expr::Call {
+//             callee: Box::new(Expr::Variable("pair".into())),
+//             type_args: vec![Type::Named("int".into()), Type::Named("bool".into())],
+//             arguments: vec![],
+//         },
+//     );
+// }
 
 // ===== Assignment to lvalues =====
 
