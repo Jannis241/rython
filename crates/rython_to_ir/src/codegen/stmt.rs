@@ -64,11 +64,47 @@ impl IrGenerator {
     }
 
     pub(super) fn gen_asm(&mut self, asm: &Asm) -> Result<(), CodegenError> {
+        let code = self.substitute_asm_variables(&asm.asm_code)?;
         self.block_handler
-            .add_instruction_to_current_block(IrInstruction::Asm {
-                code: asm.asm_code.clone(),
-            })?;
+            .add_instruction_to_current_block(IrInstruction::Asm { code })?;
         Ok(())
+    }
+
+    // Ersetzt %name in inline asm durch %<temp_id> der zugehörigne VarAddr (alloca)
+    // %name muss eine bekannte lokale Variable sein, sonst UnknownVariable
+    fn substitute_asm_variables(&self, asm_code: &str) -> Result<String, CodegenError> {
+        let bytes = asm_code.as_bytes();
+        let mut out = String::with_capacity(asm_code.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            if c != '%' {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+
+            let start = i + 1;
+            if start >= bytes.len() || !is_ident_start(bytes[start] as char) {
+                out.push('%');
+                i += 1;
+                continue;
+            }
+
+            let mut end = start + 1;
+            while end < bytes.len() && is_ident_cont(bytes[end] as char) {
+                end += 1;
+            }
+            let name = &asm_code[start..end];
+
+            let var = self
+                .lookup_variable(name)
+                .ok_or_else(|| CodegenError::UnknownVariable(name.to_string()))?;
+            out.push('%');
+            out.push_str(&var.addr.0.to_string());
+            i = end;
+        }
+        Ok(out)
     }
 
     pub(super) fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), CodegenError> {
@@ -85,4 +121,12 @@ impl IrGenerator {
             }
         }
     }
+}
+
+fn is_ident_start(c: char) -> bool {
+    c == '_' || c.is_ascii_alphabetic()
+}
+
+fn is_ident_cont(c: char) -> bool {
+    c == '_' || c.is_ascii_alphanumeric()
 }
