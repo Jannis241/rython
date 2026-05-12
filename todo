@@ -1,0 +1,63 @@
+Based on my review of the lexer, parser, AST, and IR codegen, here's what's still missing or incomplete in the
+  pipeline:
+
+  Lexer (lexer.rs)
+
+  - No source positions — tokens have no line/column info, so all later errors are unlocatable.
+  - No hex/binary/octal literals, no underscores in numbers (1_000), no scientific notation for floats.
+  - String/char lexer is sloppy — never errors on unterminated string or EOF, just silently exits the loop. handle_char
+   accepts multi-character literals (only asserted later in the parser at line 412).
+  - No block comments (/* … */), only //.
+  - Escape sequences — only \n \t \r " ' \\; no \0, \x.., \u{..}.
+  - asm keyword is half-magic: the lexer eats until } but doesn't track an opening {, so any } inside the asm body
+  terminates it.
+  - No &&/|| tokens (uses and/or keywords — fine, but &/| then get parsed as bitwise which works, just be aware).
+
+  Parser (parser.rs)
+
+  - Turbofish unreachable (parser.rs:320 — unimplemented!() for ::<…>). Generic calls are syntactically broken.
+  - Variant literal grammar uses Name:Case (single colon) at parser.rs:426, which collides with let x: int — parsed
+  only because postfix already advanced past the let-binding. Likely should be Name::Case.
+  - Char literal: assert_eq!(char_str.len(), 1) panics rather than producing a ParseError.
+  - Type grammar has no pointer/reference syntax, no generic args on types (List<int> as a type isn't parsable through
+  parse_type, only through parse_type_args).
+  - for loop is parsed but codegen panics — no gen_for exists; Stmt::For falls into the catch-all InvalidStatement
+  (stmt.rs:143).
+  - return without semicolon required (no expression-bodied returns).
+  - else if chains work, but the resulting AST nests If inside Box<Stmt> (If(If) directly, not Block([If])), worth
+  keeping in mind.
+  - No precedence for unary +, no &/* for address-of/deref.
+
+  IR generation (codegen/)
+
+  - Stmt::For not implemented — no iteration protocol.
+  - Expr::NullLiteral is unimplemented!() (expr.rs:26).
+  - No traits / trait impls — generate_code_inner returns InvalidItem for Item::Trait and Item::TraitImplementation
+  (generator.rs:457). Import also rejected.
+  - No generics — convert_to_ir_type panics on Type::AnyTrait (generator.rs:313); generic params are collected but
+  never substituted.
+  - Type::Named lookup is string-based — no validation that a named type exists outside the struct/variant tables. void
+   only works as a string literal in the return type.
+  - if/while/loop don't track unreachable merge blocks well — gen_loop always creates an end block even when the body
+  unconditionally returns/never breaks, leading to an unterminated dead block (caught later by MissingTerminator).
+  - No type inference (stmt.rs:11 TODO) — let always requires : type.
+  - gen_string_literal hard-codes a string struct with init_start and push_char methods; same for list. If the user's
+  program doesn't define them, codegen fails with UnknownFunction. There's no stdlib/prelude.
+  - gen_call panics with unimplemented!() (expr.rs:506) for any callee that isn't Expr::Variable or Expr::FieldAccess
+  (e.g., calling a returned function, method on grouping).
+  - No overflow / coercion rules — int and float never mix; no implicit promotion.
+  - Operator overloading only works on the LHS struct (gen_binary_op), and unary operators have no overload path at
+  all.
+  - Constants/globals only accept primitive literals in eval_const_expr — no constant folding, no struct constants.
+  - No drop/destructor semantics; structs are stack Allocas that escape via pointer (gen_struct_literal returns the
+  stack address), so returning a struct literal would dangle.
+  - PrimitiveValue::Pointer(TempId) exists in the IR but no code path produces it.
+  - No address-of / dereference IR — even though asm { ... [%&x] ... } is used in main.ry, substitute_asm_variables
+  doesn't recognize & (it just inserts %<temp> where the temp holds the value, not the address). Worth checking against
+   the ir_to_assembly side.
+
+  Cross-cutting
+
+  - No semantic analysis pass between AST and IR — type checks are interleaved with codegen, so errors are partial and
+  ordering-dependent.
+  - No source spans on errors anywhere.
