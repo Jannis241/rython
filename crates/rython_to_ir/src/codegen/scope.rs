@@ -34,13 +34,6 @@ impl IrGenerator {
         ty: IrType,
         addr: TempId,
     ) -> Result<(), CodegenError> {
-        //aamgibouity check
-        if self.module.constants.iter().any(|c| c.name == name)
-            || self.module.globals.iter().any(|g| g.name == name)
-        {
-            return Err(CodegenError::AmbigousVariable(name));
-        }
-
         self.scopes
             .last_mut()
             .expect("No active scope")
