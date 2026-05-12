@@ -24,6 +24,8 @@ pub struct Parser {
     ast: Vec<Item>,
     pub current_idx: usize,
     allow_struct_literal: bool,
+    // Name des gerade geparsten Structs/Impls für this nötig
+    current_self_type: Option<String>,
 }
 
 impl Parser {
@@ -33,6 +35,7 @@ impl Parser {
             ast: vec![],
             current_idx: 0,
             allow_struct_literal: true,
+            current_self_type: None,
         }
     }
 
@@ -436,6 +439,10 @@ impl Parser {
                     Ok(Expr::Variable(curr.value))
                 }
             }
+            TokenKind::This => {
+                self.advance()?;
+                Ok(Expr::Variable("this".to_string()))
+            }
             TokenKind::LParen => {
                 self.advance()?;
                 let prev = self.allow_struct_literal;
@@ -532,7 +539,16 @@ impl Parser {
 
             Ok(Type::AnyTrait(trait_bounds))
         } else {
-            self.expect_current(TokenKind::Ident)?;
+            // primitive Typ-Keywords (aktuell nur `char`) sind eigene TokenKinds,
+            // werden hier aber wie Idents als Type::Named uebernommen.
+            let kind = self.current()?.kind;
+            if kind != TokenKind::Ident && kind != TokenKind::Char {
+                return Err(ParseError::UnexpectedToken {
+                    expected: TokenKind::Ident,
+                    found: kind,
+                    token_idx: self.current_idx,
+                });
+            }
             let type_name = self.current()?.value;
             self.advance()?;
             Ok(Type::Named(type_name))
@@ -632,6 +648,30 @@ impl Parser {
             if self.current()?.kind == TokenKind::RParen {
                 self.advance()?;
                 break;
+            }
+
+            if self.current()?.kind == TokenKind::This {
+                let struct_name =
+                    self.current_self_type
+                        .clone()
+                        .ok_or(ParseError::UnexpectedToken {
+                            expected: TokenKind::Ident,
+                            found: TokenKind::This,
+                            token_idx: self.current_idx,
+                        })?;
+                self.advance()?;
+                params.push(Param {
+                    name: "this".to_string(),
+                    param_type: Type::Named(struct_name),
+                });
+
+                if self.current()?.kind == TokenKind::RParen {
+                    self.advance()?;
+                    break;
+                }
+                self.expect_current(TokenKind::Comma)?;
+                self.advance()?;
+                continue;
             }
 
             self.expect_current(TokenKind::Ident)?;
@@ -869,6 +909,9 @@ impl Parser {
         let mut fields = vec![];
         let mut functions = vec![];
 
+        let prev_self = self.current_self_type.take();
+        self.current_self_type = Some(struct_name.clone());
+
         loop {
             if self.current()?.kind == TokenKind::RBrace {
                 self.advance()?;
@@ -897,6 +940,8 @@ impl Parser {
                 self.advance()?;
             }
         }
+
+        self.current_self_type = prev_self;
 
         self.ast.push(Item::Struct(Struct {
             struct_name,
@@ -976,6 +1021,9 @@ impl Parser {
 
         let mut functions = vec![];
 
+        let prev_self = self.current_self_type.take();
+        self.current_self_type = Some(struct_name.clone());
+
         loop {
             if self.current()?.kind == TokenKind::RBrace {
                 self.advance()?;
@@ -983,6 +1031,8 @@ impl Parser {
             }
             functions.push(self.parse_fn_def()?);
         }
+
+        self.current_self_type = prev_self;
 
         self.ast
             .push(Item::TraitImplementation(TraitImplementation {

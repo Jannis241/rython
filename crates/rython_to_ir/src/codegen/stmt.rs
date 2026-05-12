@@ -1,12 +1,14 @@
+use std::collections::HashMap;
+
 use crate::ast::{Asm, Expr, Let, Return, Stmt};
-use crate::ir::{IrInstruction, IrType, Terminator};
+use crate::ir::{IrInstruction, IrType, TempId, Terminator};
 
 use super::error::CodegenError;
 use super::generator::IrGenerator;
 
 impl IrGenerator {
     pub(super) fn gen_let(&mut self, l: &Let) -> Result<(), CodegenError> {
-        let ir_type = Self::convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein??? -> für type inference später vllt zb let x = 10; -> jz grade muss man immer let x: iint = 19;
+        let ir_type = self.convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein??? -> für type inference später vllt zb let x = 10; -> jz grade muss man immer let x: iint = 19;
 
         let id_for_alloc = self.next_temp_id();
 
@@ -70,11 +72,10 @@ impl IrGenerator {
         Ok(())
     }
 
-    // Ersetzt %name in inline asm durch %<temp_id> der zugehörigne VarAddr (alloca)
-    // %name muss eine bekannte lokale Variable sein, sonst UnknownVariable
-    fn substitute_asm_variables(&self, asm_code: &str) -> Result<String, CodegenError> {
+    fn substitute_asm_variables(&mut self, asm_code: &str) -> Result<String, CodegenError> {
         let bytes = asm_code.as_bytes();
         let mut out = String::with_capacity(asm_code.len());
+        let mut loaded: HashMap<String, TempId> = HashMap::new();
         let mut i = 0;
         while i < bytes.len() {
             let c = bytes[i] as char;
@@ -97,11 +98,28 @@ impl IrGenerator {
             }
             let name = &asm_code[start..end];
 
-            let var = self
-                .lookup_variable(name)
-                .ok_or_else(|| CodegenError::UnknownVariable(name.to_string()))?;
+            let value_temp = if let Some(t) = loaded.get(name) {
+                *t
+            } else {
+                let (var_ty, var_addr) = {
+                    let var = self
+                        .lookup_variable(name)
+                        .ok_or_else(|| CodegenError::UnknownVariable(name.to_string()))?;
+                    (var.ty.clone(), var.addr)
+                };
+                let temp = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Load {
+                        temp_id: temp,
+                        ty: var_ty,
+                        addr: var_addr,
+                    })?;
+                loaded.insert(name.to_string(), temp);
+                temp
+            };
+
             out.push('%');
-            out.push_str(&var.addr.0.to_string());
+            out.push_str(&value_temp.0.to_string());
             i = end;
         }
         Ok(out)

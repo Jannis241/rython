@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{Asm, Expr, Function, Item, Param, Type};
 use crate::codegen::generator;
@@ -22,6 +22,7 @@ pub struct IrGenerator {
     pub(super) current_mangel_prefix: Vec<String>,
     // (struct_name, operator_string) -> (mangled_function_name, return_type)
     pub(super) operator_functions: HashMap<(String, String), (String, IrType)>,
+    pub(super) struct_names: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -128,12 +129,13 @@ impl IrGenerator {
             module: IrModule::new(),
             current_mangel_prefix: Vec::new(),
             operator_functions: HashMap::new(),
+            struct_names: HashSet::new(),
         }
     }
 
     pub fn handle_parameters(&mut self, params: &Vec<Param>) -> Result<(), CodegenError> {
         for (index, parameter) in params.iter().enumerate() {
-            let parameter_type = Self::convert_to_ir_type(&parameter.param_type);
+            let parameter_type = self.convert_to_ir_type(&parameter.param_type);
 
             // 1. platz für den Typ des Parameters allocaten und einen poointer zu der
             // Addr in temp_var_alloc_pointer speichern
@@ -219,7 +221,7 @@ impl IrGenerator {
         self.temp_counter = 0;
 
         // return type bekommen
-        self.current_expected_return_type = Self::convert_to_ir_type(
+        self.current_expected_return_type = self.convert_to_ir_type(
             &function
                 .return_type
                 .clone()
@@ -249,7 +251,7 @@ impl IrGenerator {
             .iter()
             .map(|param| IrField {
                 name: param.name.clone(),
-                ty: Self::convert_to_ir_type(&param.param_type),
+                ty: self.convert_to_ir_type(&param.param_type),
             })
             .collect();
 
@@ -263,7 +265,7 @@ impl IrGenerator {
             return_type: function
                 .return_type
                 .as_ref()
-                .map(Self::convert_to_ir_type)
+                .map(|t| self.convert_to_ir_type(t))
                 .unwrap_or(IrType::Void),
             blocks,
         })
@@ -275,17 +277,35 @@ impl IrGenerator {
         return id;
     }
 
-    pub(super) fn convert_to_ir_type(ty: &Type) -> IrType {
+    // Struct-Typen werden einheitlich als Pointer<Named> dargestellt.
+    // collect_struct_names muss vorher gelaufen sein, damit struct_names befuellt ist.
+    pub(super) fn convert_to_ir_type(&self, ty: &Type) -> IrType {
         match ty {
             Type::Named(name) => match name.as_str() {
                 "int" => IrType::I64,
                 "float" => IrType::F64,
                 "bool" => IrType::Bool,
                 "void" => IrType::Void,
-                other => IrType::Named(other.to_string()),
+                "char" => IrType::Char,
+                other => {
+                    let inner = IrType::Named(other.to_string());
+                    if self.struct_names.contains(other) {
+                        IrType::Pointer(Box::new(inner))
+                    } else {
+                        inner
+                    }
+                }
             },
             Type::AnyTrait(_) => {
                 todo!()
+            }
+        }
+    }
+
+    pub(super) fn collect_struct_names(&mut self, items: &[Item]) {
+        for item in items {
+            if let Item::Struct(s) = item {
+                self.struct_names.insert(s.struct_name.clone());
             }
         }
     }
@@ -294,14 +314,15 @@ impl IrGenerator {
         for item in items {
             match item {
                 Item::Function(f) => {
+                    let return_ty = if let Some(rt) = f.return_type.clone() {
+                        Some(self.convert_to_ir_type(&rt))
+                    } else {
+                        None
+                    };
                     self.functions_return_type.insert(
                         //TODO: generic Params
                         f.name.clone(),
-                        if let Some(rt) = f.return_type.clone() {
-                            Some(IrGenerator::convert_to_ir_type(&rt))
-                        } else {
-                            None
-                        },
+                        return_ty,
                     );
                 }
                 _ => {}
@@ -318,7 +339,7 @@ impl IrGenerator {
                 for f in s.functions.iter() {
                     let mangled = self.mangel(f.name.clone());
                     let return_ty = if let Some(rt) = f.return_type.clone() {
-                        Some(IrGenerator::convert_to_ir_type(&rt))
+                        Some(self.convert_to_ir_type(&rt))
                     } else {
                         None
                     };
@@ -360,7 +381,7 @@ impl IrGenerator {
                     for parser_field in structdef.fields.iter() {
                         ir_fields.push(IrField {
                             name: parser_field.field_name.clone(),
-                            ty: IrGenerator::convert_to_ir_type(&parser_field.field_type),
+                            ty: self.convert_to_ir_type(&parser_field.field_type),
                         });
                     }
 
@@ -388,6 +409,10 @@ impl IrGenerator {
         Ok(())
     }
     pub fn generate_code_inner(&mut self, items: &[Item]) -> Result<(), CodegenError> {
+        // muss als allererstes laufen: convert_to_ir_type braucht struct_names um
+        // Struct-Namen einheitlich als Pointer<Named> auszugeben.
+        self.collect_struct_names(items);
+
         self.preprocces_function_return_types(items);
         self.preprocess_method_return_types(items);
         self.preprocces_type_defs(items)?;
@@ -435,7 +460,7 @@ impl IrGenerator {
                         let return_ty = f
                             .return_type
                             .as_ref()
-                            .map(Self::convert_to_ir_type)
+                            .map(|t| self.convert_to_ir_type(t))
                             .unwrap_or(IrType::Void);
                         self.operator_functions
                             .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
@@ -459,7 +484,7 @@ impl IrGenerator {
                     {
                         return Err(CodegenError::DuplicateGlobal(name.clone()));
                     }
-                    let declared_ty = Self::convert_to_ir_type(&const_var.var_type);
+                    let declared_ty = self.convert_to_ir_type(&const_var.var_type);
                     let (val_ty, val) = self.eval_const_expr(&const_var.value)?;
                     if val_ty != declared_ty {
                         return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
@@ -477,7 +502,7 @@ impl IrGenerator {
                     {
                         return Err(CodegenError::DuplicateGlobal(name.clone()));
                     }
-                    let declared_ty = Self::convert_to_ir_type(&global_var.var_type);
+                    let declared_ty = self.convert_to_ir_type(&global_var.var_type);
                     let (val_ty, val) = self.eval_const_expr(&global_var.value)?;
                     if val_ty != declared_ty {
                         return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
