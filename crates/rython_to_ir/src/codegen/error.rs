@@ -35,4 +35,7 @@ pub enum CodegenError {
     InvalidExpr(Expr),
     InvalidStatement(Stmt),
     InvalidReturnType(IrType, IrType), // expected, got
+
+    BreakOutsideLoop,
+    ContinueOutsideLoop,
 }

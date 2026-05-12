@@ -52,4 +52,29 @@ fn print(to_print: string) {
 
 fn main() {
     print("hello world");
+
+
+
+
+    let x: int = 10;
+
+
+    if x > 11 {
+        print("x > 11");
+    }
+    else if x < 11 {
+        print("x > 11");
+    }
+    else {
+        print("x = 11");
+    }
+
+
+    print("hello");
+
+
+    while x < 100 {
+        x += 1;
+        print("x");
+    }
 }

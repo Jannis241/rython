@@ -23,6 +23,9 @@ pub struct IrGenerator {
     // (struct_name, operator_string) -> (mangled_function_name, return_type)
     pub(super) operator_functions: HashMap<(String, String), (String, IrType)>,
     pub(super) struct_names: HashSet<String>,
+    pub(super) block_label_counter: usize,
+    // (continue_target, break_target) — top ist die aktuell umschließende loop
+    pub(super) loop_stack: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,7 +133,15 @@ impl IrGenerator {
             current_mangel_prefix: Vec::new(),
             operator_functions: HashMap::new(),
             struct_names: HashSet::new(),
+            block_label_counter: 0,
+            loop_stack: Vec::new(),
         }
+    }
+
+    pub(super) fn fresh_block_label(&mut self, prefix: &str) -> String {
+        let label = format!("{}_{}", prefix, self.block_label_counter);
+        self.block_label_counter += 1;
+        label
     }
 
     pub fn handle_parameters(&mut self, params: &Vec<Param>) -> Result<(), CodegenError> {
@@ -219,6 +230,8 @@ impl IrGenerator {
 
         // Temp variable counter reseten, da er für jede funktion wieder bei 0 anfängt
         self.temp_counter = 0;
+        self.block_label_counter = 0;
+        self.loop_stack.clear();
 
         // return type bekommen
         self.current_expected_return_type = self.convert_to_ir_type(
