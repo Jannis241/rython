@@ -84,14 +84,28 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+struct Span {
+    start_char_idx: u32,
+    length: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub value: String,
+    pub span: Span,
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, value: String) -> Self {
-        Token { kind, value }
+    pub fn new(kind: TokenKind, value: String, length: i32) -> Self {
+        Token {
+            kind,
+            value,
+            span: Span {
+                start_char_idx: self.cu,
+                length,
+            },
+        }
     }
 }
 
@@ -300,14 +314,14 @@ impl Lexer {
     fn handle_idents(&mut self) -> Result<Token, LexingError> {
         let mut ident = String::new();
         ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
-        // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
+                                                // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
 
         while self
             .peek()
             .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             ident.push(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
-            // ob self.peek Some ist
+                                              // ob self.peek Some ist
             self.advance();
         }
 
@@ -424,7 +438,7 @@ impl Lexer {
         let mut is_float = false;
 
         number.push(self.current_char.unwrap()); // unwrap ist safe da die methode nur bei
-        // Some() aufgerufen wird
+                                                 // Some() aufgerufen wird
 
         while self
             .peek()
