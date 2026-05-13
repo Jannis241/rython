@@ -182,7 +182,6 @@ impl IrGenerator {
         Ok((value_temp, field_ty))
     }
 
-    //Jannis slop fix!! yessirsky war ass (grr)
     // liefert die adresse vom feld zurück, nicht den wert.
     // für GetFieldAddr brauchen wir die addr des structs (nicht seinen wert),
     // also gen_lvalue_addr statt gen_expr. bei Pointer<Named> ist der wert die addr,
@@ -233,7 +232,6 @@ impl IrGenerator {
         }
     }
 
-    //Jannis slop fix!! yessirsky war ass (grr)
     // hilfsfunktion für left-werte: liefert die adresse und den typ.
     // unterstützt variable (lokal/global), feld zugriff und gruppierung.
     // konsts haben keine zuweisbare adresse -> AssignToConst.
