@@ -9,14 +9,37 @@ pub enum ParseError {
         found: TokenKind,
         token_idx: usize,
     },
-    UnexpectedTopLevel(TokenKind),
-    UnexpectedEof,
-    ExpectedStatement,
-    InvalidAssignmentTarget,
-    UnexpectedExprStart(TokenKind),
-    InvalidOperatorName(String),
-    EmptyOperatorName,
-    InvalidPattern(TokenKind),
+    UnexpectedTopLevel {
+        found: TokenKind,
+        token_idx: usize,
+    },
+    UnexpectedEof {
+        token_idx: usize,
+    },
+    ExpectedStatement {
+        token_idx: usize,
+    },
+    InvalidAssignmentTarget {
+        token_idx: usize,
+    },
+    UnexpectedExprStart {
+        found: TokenKind,
+        token_idx: usize,
+    },
+    InvalidOperatorName {
+        name: String,
+        token_idx: usize,
+    },
+    EmptyOperatorName {
+        token_idx: usize,
+    },
+    InvalidPattern {
+        found: TokenKind,
+        token_idx: usize,
+    },
+    InvalidCharLiteral {
+        token_idx: usize,
+    },
 }
 
 pub struct Parser {
@@ -42,7 +65,9 @@ impl Parser {
     pub fn advance(&mut self) -> Result<(), ParseError> {
         self.current_idx += 1;
         if self.current_idx >= self.tokens.len() {
-            return Err(ParseError::UnexpectedEof);
+            return Err(ParseError::UnexpectedEof {
+                token_idx: self.current_idx,
+            });
         }
         Ok(())
     }
@@ -51,14 +76,18 @@ impl Parser {
         self.tokens
             .get(self.current_idx)
             .cloned()
-            .ok_or(ParseError::UnexpectedEof)
+            .ok_or(ParseError::UnexpectedEof {
+                token_idx: self.current_idx,
+            })
     }
 
     pub fn peek(&self) -> Result<Token, ParseError> {
         self.tokens
             .get(self.current_idx + 1)
             .cloned()
-            .ok_or(ParseError::UnexpectedEof)
+            .ok_or(ParseError::UnexpectedEof {
+                token_idx: self.current_idx + 1,
+            })
     }
 
     pub fn expect_current(&self, expected: TokenKind) -> Result<(), ParseError> {
@@ -93,7 +122,9 @@ impl Parser {
                 self.advance()?;
                 let value = self.parse_assignment()?;
                 if !is_valid_lvalue(&lhs) {
-                    return Err(ParseError::InvalidAssignmentTarget);
+                    return Err(ParseError::InvalidAssignmentTarget {
+                        token_idx: self.current_idx,
+                    });
                 }
                 return Ok(Expr::Assign {
                     target: Box::new(lhs),
@@ -110,7 +141,9 @@ impl Parser {
         self.advance()?;
         let value = self.parse_assignment()?;
         if !is_valid_lvalue(&lhs) {
-            return Err(ParseError::InvalidAssignmentTarget);
+            return Err(ParseError::InvalidAssignmentTarget {
+                token_idx: self.current_idx,
+            });
         }
         Ok(Expr::BinaryOpAssign {
             target: Box::new(lhs),
@@ -121,7 +154,7 @@ impl Parser {
 
     fn parse_or(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_and()?;
-        while self.current()?.kind == TokenKind::Or {
+        while matches!(self.current()?.kind, TokenKind::Or | TokenKind::PipePipe) {
             self.advance()?;
             let rhs = self.parse_and()?;
             lhs = Expr::BinaryOp {
@@ -135,7 +168,7 @@ impl Parser {
 
     fn parse_and(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_equality()?;
-        while self.current()?.kind == TokenKind::And {
+        while matches!(self.current()?.kind, TokenKind::And | TokenKind::AmpAmp) {
             self.advance()?;
             let rhs = self.parse_equality()?;
             lhs = Expr::BinaryOp {
@@ -288,10 +321,15 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if self.current()?.kind == TokenKind::Plus {
+            // +-x parses as +(-x)
+            self.advance()?;
+            return self.parse_unary();
+        }
         let op = match self.current()?.kind {
             TokenKind::Minus => UnaryOp::Neg,
             TokenKind::Tilde => UnaryOp::BitNot,
-            TokenKind::Bang => UnaryOp::Not,
+            TokenKind::Bang | TokenKind::Not => UnaryOp::Not,
             _ => return self.parse_postfix(),
         };
         self.advance()?;
@@ -406,14 +444,18 @@ impl Parser {
                 Ok(Expr::NullLiteral)
             }
             TokenKind::Char => {
+                let char_token_idx = self.current_idx;
                 self.advance()?;
-                let char_str = curr.value;
-
-                assert_eq!(char_str.len(), 1);
-                let chars = char_str.chars().collect::<Vec<char>>();
-                let char = chars.first().unwrap();
-
-                Ok(Expr::CharLiteral(char.clone()))
+                let mut chars = curr.value.chars();
+                let first = chars.next().ok_or(ParseError::InvalidCharLiteral {
+                    token_idx: char_token_idx,
+                })?;
+                if chars.next().is_some() {
+                    return Err(ParseError::InvalidCharLiteral {
+                        token_idx: char_token_idx,
+                    });
+                }
+                Ok(Expr::CharLiteral(first))
             }
             TokenKind::StringLiteral => {
                 self.advance()?;
@@ -423,12 +465,12 @@ impl Parser {
                 self.advance()?;
                 if self.allow_struct_literal && self.current()?.kind == TokenKind::LBrace {
                     self.parse_struct_literal(curr.value)
-                } else if self.current()?.kind == TokenKind::Colon
+                } else if self.current()?.kind == TokenKind::ColonColon
                     && self.peek().is_ok()
                     && self.peek()?.kind == TokenKind::Ident
                 {
-                    // variant literal: MyVar:MyCase
-                    self.advance()?; // konsumiert ':'
+                    // variant literal: MyVar::MyCase
+                    self.advance()?; // konsumiert '::'
                     let case_token = self.current()?;
                     self.advance()?; // konsumiert den case ident
                     Ok(Expr::VariantLiteral {
@@ -470,7 +512,10 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::ListLiteral(elements))
             }
-            other => Err(ParseError::UnexpectedExprStart(other)),
+            other => Err(ParseError::UnexpectedExprStart {
+                found: other,
+                token_idx: self.current_idx,
+            }),
         }
     }
 
@@ -700,6 +745,7 @@ impl Parser {
         if self.current()?.kind != TokenKind::Operator {
             return Ok(None);
         }
+        let operator_keyword_idx = self.current_idx;
         self.advance()?;
 
         let mut operator = String::new();
@@ -713,10 +759,15 @@ impl Parser {
         }
 
         if operator.is_empty() {
-            return Err(ParseError::EmptyOperatorName);
+            return Err(ParseError::EmptyOperatorName {
+                token_idx: operator_keyword_idx,
+            });
         }
         if !is_known_operator(&operator) {
-            return Err(ParseError::InvalidOperatorName(operator));
+            return Err(ParseError::InvalidOperatorName {
+                name: operator,
+                token_idx: operator_keyword_idx,
+            });
         }
         Ok(Some(operator))
     }
@@ -1053,7 +1104,27 @@ impl Parser {
             if self.current()?.kind == TokenKind::RBrace {
                 break;
             }
-            block.statements.push(self.parse_statement()?);
+            if is_statement_start(self.current()?.kind) {
+                block.statements.push(self.parse_statement()?);
+                continue;
+            }
+            // expression statement, possibly with implicit-return form
+            let expr = self.parse_expr()?;
+            match self.current()?.kind {
+                TokenKind::Semicolon => {
+                    self.advance()?;
+                    block.statements.push(Stmt::Expr(expr));
+                }
+                TokenKind::RBrace => {
+                    block.statements.push(Stmt::Return(Return {
+                        return_value: Some(expr),
+                    }));
+                    break;
+                }
+                _ => {
+                    self.expect_current(TokenKind::Semicolon)?;
+                }
+            }
         }
 
         Ok(block)
@@ -1210,13 +1281,15 @@ impl Parser {
     fn parse_return(&mut self) -> Result<Stmt, ParseError> {
         self.expect_current(TokenKind::Return)?;
         self.advance()?;
-        let return_value = if self.current()?.kind == TokenKind::Semicolon {
-            None
-        } else {
-            Some(self.parse_expr()?)
+        let return_value = match self.current()?.kind {
+            TokenKind::Semicolon | TokenKind::RBrace => None,
+            _ => Some(self.parse_expr()?),
         };
-        self.expect_current(TokenKind::Semicolon)?;
-        self.advance()?;
+        if self.current()?.kind == TokenKind::Semicolon {
+            self.advance()?;
+        } else if self.current()?.kind != TokenKind::RBrace {
+            self.expect_current(TokenKind::Semicolon)?;
+        }
         Ok(Stmt::Return(Return { return_value }))
     }
 
@@ -1260,7 +1333,12 @@ impl Parser {
                     };
                     self.ast.push(Item::Asm(asm));
                 }
-                other => return Err(ParseError::UnexpectedTopLevel(other)),
+                other => {
+                    return Err(ParseError::UnexpectedTopLevel {
+                        found: other,
+                        token_idx: self.current_idx,
+                    });
+                }
             }
         }
 
@@ -1270,6 +1348,22 @@ impl Parser {
 
 fn is_valid_lvalue(expr: &Expr) -> bool {
     matches!(expr, Expr::Variable(_) | Expr::FieldAccess { .. })
+}
+
+fn is_statement_start(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Let
+            | TokenKind::If
+            | TokenKind::While
+            | TokenKind::Loop
+            | TokenKind::For
+            | TokenKind::Break
+            | TokenKind::Continue
+            | TokenKind::Return
+            | TokenKind::Asm
+            | TokenKind::LBrace
+    )
 }
 
 fn is_operator_token(kind: &TokenKind) -> bool {

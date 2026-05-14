@@ -7,7 +7,7 @@ use rython_to_ir::lexer::*;
 use rython_to_ir::parser::*;
 
 fn tk(kind: TokenKind, value: &str) -> Token {
-    Token::new(kind, value.to_string())
+    Token::new(kind, value.to_string(), 0, 0)
 }
 
 fn eof() -> Token {
@@ -71,30 +71,38 @@ fn assert_unexpected_token(err: ParseError, expected: TokenKind, found: TokenKin
 
 fn assert_unexpected_top_level(err: ParseError, found: TokenKind) {
     match err {
-        ParseError::UnexpectedTopLevel(f) => assert_eq!(f, found),
+        ParseError::UnexpectedTopLevel { found: f, .. } => assert_eq!(f, found),
         other => panic!("expected UnexpectedTopLevel, got {other:?}"),
     }
 }
 
 fn assert_unexpected_expr_start(err: ParseError, found: TokenKind) {
     match err {
-        ParseError::UnexpectedExprStart(f) => assert_eq!(f, found),
+        ParseError::UnexpectedExprStart { found: f, .. } => assert_eq!(f, found),
         other => panic!("expected UnexpectedExprStart, got {other:?}"),
     }
 }
 
 fn assert_invalid_assignment_target(err: ParseError) {
     match err {
-        ParseError::InvalidAssignmentTarget => {}
+        ParseError::InvalidAssignmentTarget { .. } => {}
         other => panic!("expected InvalidAssignmentTarget, got {other:?}"),
     }
 }
 
 fn assert_unexpected_eof(err: ParseError) {
     match err {
-        ParseError::UnexpectedEof => {}
+        ParseError::UnexpectedEof { .. } => {}
         other => panic!("expected UnexpectedEof, got {other:?}"),
     }
+}
+
+fn tokens_eq_ignoring_span(actual: &[Token], expected: &[Token]) -> bool {
+    actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected.iter())
+            .all(|(a, b)| a.kind == b.kind && a.value == b.value)
 }
 
 macro_rules! lexer_case {
@@ -102,7 +110,13 @@ macro_rules! lexer_case {
         #[test]
         fn $name() {
             let tokens = Lexer::create_tokens($input.to_string()).expect("lexing failed");
-            assert_eq!(tokens, $expected);
+            let expected: Vec<Token> = $expected;
+            assert!(
+                tokens_eq_ignoring_span(&tokens, &expected),
+                "tokens differ\n  actual:   {:?}\n  expected: {:?}",
+                tokens,
+                expected
+            );
         }
     };
 }
@@ -420,7 +434,10 @@ lexer_case!(
     vec![tk(TokenKind::StringLiteral, "a\\qb"), eof()]
 );
 
-lexer_case!(lexer_char_empty, "''", vec![tk(TokenKind::Char, ""), eof()]);
+#[test]
+fn lexer_char_empty_errors() {
+    assert!(Lexer::create_tokens("''".to_string()).is_err());
+}
 lexer_case!(
     lexer_char_basic,
     "'x'",
@@ -511,9 +528,7 @@ fn lexer_complex_program_tokenization() {
         "import a.b; fn add(x: int, y: int) int { return x + y; }".to_string(),
     )
     .expect("lexing failed");
-    assert_eq!(
-        tokens,
-        vec![
+    let expected = vec![
             tk(TokenKind::Import, "import"),
             tk(TokenKind::Ident, "a"),
             tk(TokenKind::Dot, "."),
@@ -538,8 +553,13 @@ fn lexer_complex_program_tokenization() {
             tk(TokenKind::Ident, "y"),
             tk(TokenKind::Semicolon, ";"),
             tk(TokenKind::RBrace, "}"),
-            eof()
-        ]
+            eof(),
+    ];
+    assert!(
+        tokens_eq_ignoring_span(&tokens, &expected),
+        "tokens differ\n  actual:   {:?}\n  expected: {:?}",
+        tokens,
+        expected
     );
 }
 
@@ -2588,11 +2608,11 @@ fn operator_function_with_known_symbol_parses() {
 
 #[test]
 fn operator_function_with_unknown_symbol_is_rejected() {
-    // `@` is not a known operator; the lexer rejects `@` outright, so use a
-    // sequence that lexes but is not in the operator set: `++`.
-    let err = parse_items_source("fn operator ++ inc() {}").unwrap_err();
+    // `+~` lexes as two separate operator tokens but the combined name is not
+    // in the known-operator set.
+    let err = parse_items_source("fn operator +~ inc() {}").unwrap_err();
     match err {
-        ParseError::InvalidOperatorName(s) => assert_eq!(s, "++"),
+        ParseError::InvalidOperatorName { name, .. } => assert_eq!(name, "+~"),
         other => panic!("expected InvalidOperatorName, got {other:?}"),
     }
 }
@@ -2601,7 +2621,7 @@ fn operator_function_with_unknown_symbol_is_rejected() {
 fn operator_function_with_no_symbol_is_rejected() {
     let err = parse_items_source("fn operator add() {}").unwrap_err();
     match err {
-        ParseError::EmptyOperatorName => {}
+        ParseError::EmptyOperatorName { .. } => {}
         other => panic!("expected EmptyOperatorName, got {other:?}"),
     }
 }

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use manager::run::{BuildOptions, run};
+use manager::run::{run, BuildOptions};
 use rython_to_ir::ast::Let;
 
 const USAGE: &str = "\
@@ -35,6 +35,7 @@ fn main() -> ExitCode {
         match arg.as_str() {
             "-h" | "--help" => {
                 print!("{USAGE}");
+                print!("Monte man yessssssss");
                 return ExitCode::SUCCESS;
             }
             "--emit-tokens" => options.emit_tokens = true,

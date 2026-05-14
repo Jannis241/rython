@@ -138,6 +138,7 @@ fn assert_const_value(actual: &PrimitiveValue, expected: &PrimitiveValue) {
         (PrimitiveValue::Char(actual), PrimitiveValue::Char(expected)) => {
             assert_eq!(actual, expected)
         }
+        (PrimitiveValue::Null, PrimitiveValue::Null) => {}
         _ => panic!("expected {expected:?}, got {actual:?}"),
     }
 }
@@ -403,6 +404,28 @@ fn bool_returns_generate_bool_consts_for_true_and_false() {
         &PrimitiveValue::Bool(false),
     );
     assert_ret(&entry.terminator, Some("TempId(1)"));
+}
+
+#[test]
+fn null_return_generates_null_pointer_const() {
+    let result = generate_code(&[function(
+        "nullable",
+        Vec::new(),
+        None,
+        vec![Stmt::Expr(Expr::NullLiteral), return_stmt(None)],
+    )]);
+    let module = unwrap_codegen(result);
+
+    let entry = &module.functions[0].blocks[0];
+    assert!(!entry.instructions.is_empty());
+    let null_instr = entry
+        .instructions
+        .iter()
+        .find(|i| matches!(i, IrInstruction::PrimitiveConst { value: PrimitiveValue::Null, .. }))
+        .expect("expected a Null PrimitiveConst instruction");
+    if let IrInstruction::PrimitiveConst { ty, .. } = null_instr {
+        assert_ir_type(ty, &IrType::Pointer(Box::new(IrType::Void)));
+    }
 }
 
 #[test]

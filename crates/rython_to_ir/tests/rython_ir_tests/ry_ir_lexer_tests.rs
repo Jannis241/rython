@@ -6,12 +6,16 @@ fn lex(input: &str) -> Vec<Token> {
 
 fn assert_tokens(input: &str, expected: &[(TokenKind, &str)]) {
     let actual = lex(input);
-    let expected: Vec<Token> = expected
+    let actual_pairs: Vec<(TokenKind, String)> = actual
         .iter()
-        .map(|(kind, value)| Token::new(kind.clone(), (*value).to_string()))
+        .map(|t| (t.kind.clone(), t.value.clone()))
+        .collect();
+    let expected_pairs: Vec<(TokenKind, String)> = expected
+        .iter()
+        .map(|(k, v)| (k.clone(), (*v).to_string()))
         .collect();
 
-    assert_eq!(actual, expected, "input: {input:?}");
+    assert_eq!(actual_pairs, expected_pairs, "input: {input:?}");
 }
 
 #[test]
@@ -227,17 +231,62 @@ fn dot_prefixed_decimal_starts_with_dot_token() {
 }
 
 #[test]
-fn number_literals_do_not_allow_underscores() {
-    // 123_456 is *not* a digit-separated literal; it lexes as the int 123
-    // immediately followed by the identifier _456.
+fn number_literals_allow_underscores_as_digit_separators() {
     assert_tokens(
-        "123_456",
+        "123_456 1_000_000",
         &[
-            (TokenKind::Int, "123"),
-            (TokenKind::Ident, "_456"),
+            (TokenKind::Int, "123456"),
+            (TokenKind::Int, "1000000"),
             (TokenKind::Eof, "EOF"),
         ],
     );
+}
+
+#[test]
+fn underscore_not_followed_by_digit_ends_number() {
+    assert_tokens(
+        "1_abc",
+        &[
+            (TokenKind::Int, "1"),
+            (TokenKind::Ident, "_abc"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn lexes_hex_binary_octal_literals() {
+    assert_tokens(
+        "0xFF 0xdead_beef 0b1010 0b1_0 0o17 0o7_7",
+        &[
+            (TokenKind::Int, "0xFF"),
+            (TokenKind::Int, "0xdeadbeef"),
+            (TokenKind::Int, "0b1010"),
+            (TokenKind::Int, "0b10"),
+            (TokenKind::Int, "0o17"),
+            (TokenKind::Int, "0o77"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn lexes_scientific_float_literals() {
+    assert_tokens(
+        "1e10 1.5e3 2.5e-3 4.0E+2",
+        &[
+            (TokenKind::Float, "1e10"),
+            (TokenKind::Float, "1.5e3"),
+            (TokenKind::Float, "2.5e-3"),
+            (TokenKind::Float, "4.0e+2"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn hex_prefix_with_no_digits_errors() {
+    assert!(Lexer::create_tokens("0x".to_string()).is_err());
 }
 
 #[test]
@@ -293,10 +342,11 @@ fn string_literal_handles_carriage_return_escape() {
 
 #[test]
 fn string_literal_keeps_unknown_escape_backslash() {
+    // \q is not a recognised escape; the backslash stays in the literal.
     assert_tokens(
-        r#""unknown \x escape""#,
+        r#""unknown \q escape""#,
         &[
-            (TokenKind::StringLiteral, "unknown \\x escape"),
+            (TokenKind::StringLiteral, "unknown \\q escape"),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -326,11 +376,8 @@ fn string_literal_keeps_single_quotes_as_text() {
 }
 
 #[test]
-fn string_literal_keeps_final_backslash_in_unterminated_string() {
-    assert_tokens(
-        r#""abc\"#,
-        &[(TokenKind::StringLiteral, "abc\\"), (TokenKind::Eof, "EOF")],
-    );
+fn unterminated_string_with_trailing_backslash_errors() {
+    assert!(Lexer::create_tokens(r#""abc\"#.to_string()).is_err());
 }
 
 #[test]
@@ -348,11 +395,10 @@ fn lexes_char_literals() {
 }
 
 #[test]
-fn char_literal_keeps_unknown_escape_backslash() {
-    assert_tokens(
-        r#"'\q'"#,
-        &[(TokenKind::Char, "\\q"), (TokenKind::Eof, "EOF")],
-    );
+fn char_literal_with_unknown_escape_errors() {
+    // unknown escape keeps the backslash, which turns the literal into two
+    // characters and rejects it.
+    assert!(Lexer::create_tokens(r#"'\q'"#.to_string()).is_err());
 }
 
 #[test]
@@ -381,16 +427,18 @@ fn char_literal_handles_carriage_return_escape() {
 }
 
 #[test]
-fn char_literal_accepts_empty_multiple_chars_and_unterminated_values() {
-    assert_tokens(
-        "'' 'ab' 'unterminated",
-        &[
-            (TokenKind::Char, ""),
-            (TokenKind::Char, "ab"),
-            (TokenKind::Char, "unterminated"),
-            (TokenKind::Eof, "EOF"),
-        ],
-    );
+fn empty_char_literal_errors() {
+    assert!(Lexer::create_tokens("''".to_string()).is_err());
+}
+
+#[test]
+fn multi_char_literal_errors() {
+    assert!(Lexer::create_tokens("'ab'".to_string()).is_err());
+}
+
+#[test]
+fn unterminated_char_literal_errors() {
+    assert!(Lexer::create_tokens("'unterminated".to_string()).is_err());
 }
 
 #[test]
@@ -405,14 +453,8 @@ fn string_literal_keeps_newlines_and_tabs_inside() {
 }
 
 #[test]
-fn unterminated_string_returns_string_token_until_end() {
-    assert_tokens(
-        "\"unterminated",
-        &[
-            (TokenKind::StringLiteral, "unterminated"),
-            (TokenKind::Eof, "EOF"),
-        ],
-    );
+fn unterminated_string_errors() {
+    assert!(Lexer::create_tokens("\"unterminated".to_string()).is_err());
 }
 
 #[test]
@@ -490,14 +532,51 @@ fn lexes_adjacent_slash_operators_and_comments() {
 }
 
 #[test]
-fn repeated_ampersands_and_pipes_are_separate_tokens() {
+fn lexes_null_keyword() {
+    assert_tokens(
+        "null nullx xnull null_value",
+        &[
+            (TokenKind::Null, "null"),
+            (TokenKind::Ident, "nullx"),
+            (TokenKind::Ident, "xnull"),
+            (TokenKind::Ident, "null_value"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn lexes_not_keyword() {
+    assert_tokens(
+        "not notx xnot",
+        &[
+            (TokenKind::Not, "not"),
+            (TokenKind::Ident, "notx"),
+            (TokenKind::Ident, "xnot"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn double_ampersand_and_double_pipe_lex_as_logical_operators() {
     assert_tokens(
         "&& ||",
         &[
+            (TokenKind::AmpAmp, "&&"),
+            (TokenKind::PipePipe, "||"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn triple_ampersand_lexes_as_double_then_single() {
+    assert_tokens(
+        "&&&",
+        &[
+            (TokenKind::AmpAmp, "&&"),
             (TokenKind::Amp, "&"),
-            (TokenKind::Amp, "&"),
-            (TokenKind::Pipe, "|"),
-            (TokenKind::Pipe, "|"),
             (TokenKind::Eof, "EOF"),
         ],
     );
@@ -542,18 +621,71 @@ fn slash_comment_at_end_of_input_finishes_with_eof() {
 }
 
 #[test]
-fn block_comment_syntax_is_lexed_as_regular_tokens() {
+fn skips_block_comments() {
     assert_tokens(
-        "/* comment */",
+        "let /* comment */ x",
         &[
-            (TokenKind::Slash, "/"),
-            (TokenKind::Star, "*"),
-            (TokenKind::Ident, "comment"),
-            (TokenKind::Star, "*"),
-            (TokenKind::Slash, "/"),
+            (TokenKind::Let, "let"),
+            (TokenKind::Ident, "x"),
             (TokenKind::Eof, "EOF"),
         ],
     );
+}
+
+#[test]
+fn block_comment_can_span_multiple_lines() {
+    assert_tokens(
+        "let /* multi\n line\n comment */ x",
+        &[
+            (TokenKind::Let, "let"),
+            (TokenKind::Ident, "x"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn unterminated_block_comment_errors() {
+    assert!(Lexer::create_tokens("/* never closed".to_string()).is_err());
+}
+
+#[test]
+fn lexes_escape_sequences_null_hex_unicode() {
+    assert_tokens(
+        r#""null:\0 hex:\x41 uni:\u{1F600}""#,
+        &[
+            (TokenKind::StringLiteral, "null:\0 hex:A uni:\u{1F600}"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn invalid_hex_escape_errors() {
+    assert!(Lexer::create_tokens(r#""\xZZ""#.to_string()).is_err());
+}
+
+#[test]
+fn invalid_unicode_escape_errors() {
+    assert!(Lexer::create_tokens(r#""\u{GGG}""#.to_string()).is_err());
+}
+
+#[test]
+fn asm_body_with_inner_braces_tracks_balance() {
+    let tokens = lex("asm { mov %x, { 1 + 2 } };");
+    assert_eq!(tokens[0].kind, TokenKind::Asm);
+    assert_eq!(tokens[0].value, " mov %x, { 1 + 2 } ");
+    assert_eq!(tokens[1].kind, TokenKind::Semicolon);
+}
+
+#[test]
+fn asm_unterminated_errors() {
+    assert!(Lexer::create_tokens("asm { mov rax, 1".to_string()).is_err());
+}
+
+#[test]
+fn asm_without_brace_errors() {
+    assert!(Lexer::create_tokens("asm hello".to_string()).is_err());
 }
 
 #[test]

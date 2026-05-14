@@ -22,9 +22,11 @@ pub struct IrGenerator {
     pub(super) current_mangel_prefix: Vec<String>,
     // (struct_name, operator_string) -> (mangled_function_name, return_type)
     pub(super) operator_functions: HashMap<(String, String), (String, IrType)>,
+    // (struct_name, operator_string) -> (mangled_function_name, return_type)
+    pub(super) unary_operator_functions: HashMap<(String, String), (String, IrType)>,
     pub(super) struct_names: HashSet<String>,
     pub(super) block_label_counter: usize,
-    // (continue_target, break_target) — top ist die aktuell umschließende loop
+    // (continue_target, break_target)
     pub(super) loop_stack: Vec<(String, String)>,
 }
 
@@ -132,6 +134,7 @@ impl IrGenerator {
             module: IrModule::new(),
             current_mangel_prefix: Vec::new(),
             operator_functions: HashMap::new(),
+            unary_operator_functions: HashMap::new(),
             struct_names: HashSet::new(),
             block_label_counter: 0,
             loop_stack: Vec::new(),
@@ -464,6 +467,7 @@ impl IrGenerator {
 
     pub(super) fn preprocess_operators(&mut self, items: &[Item]) {
         // erzeugt die gleichen mangled Namen wie gen_func_struct für struct Methods.
+        // herausfinden ob binary op oder unary op
         for item in items {
             if let Item::Struct(s) = item {
                 self.add_to_current_mangel_prefix(s.struct_name.clone());
@@ -475,8 +479,13 @@ impl IrGenerator {
                             .as_ref()
                             .map(|t| self.convert_to_ir_type(t))
                             .unwrap_or(IrType::Void);
-                        self.operator_functions
-                            .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
+                        if f.params.is_empty() {
+                            self.unary_operator_functions
+                                .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
+                        } else {
+                            self.operator_functions
+                                .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
+                        }
                     }
                 }
                 self.pop_last_mangel_prefix();
@@ -551,6 +560,10 @@ impl IrGenerator {
             }
             Expr::BoolLiteral(b) => Ok((IrType::Bool, PrimitiveValue::Bool(*b))),
             Expr::CharLiteral(c) => Ok((IrType::Char, PrimitiveValue::Char(*c))),
+            Expr::NullLiteral => Ok((
+                IrType::Pointer(Box::new(IrType::Void)),
+                PrimitiveValue::Null,
+            )),
             //Todo andere exprs machen die auch in ein const/ global gespeichert werden können
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }

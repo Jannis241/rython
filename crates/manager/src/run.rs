@@ -4,6 +4,7 @@ use ir_to_assembly::codegen as asmcodegen;
 // use ir_to_assembly::codegen::AsmCodeGenErr;
 use rython_to_ir::codegen::CodegenError;
 use rython_to_ir::lexer::LexingError;
+use rython_to_ir::lexer::TokenKind;
 use rython_to_ir::parser::ParseError;
 use rython_to_ir::{codegen, lexer, parser};
 
@@ -111,9 +112,32 @@ pub fn run(file_name: &str, options: &BuildOptions) -> Result<i32, BuildError> {
         source: e,
     })?;
 
-    let tokens = lexer::Lexer::create_tokens(content).map_err(BuildError::Lex)?;
+    let tokens = lexer::Lexer::create_tokens(content.clone()).map_err(BuildError::Lex)?;
     if options.emit_tokens {
-        eprintln!("[tokens] {tokens:#?}");
+        for token in tokens.iter() {
+            if token.kind == TokenKind::Eof {
+                eprintln!("[token] EOF");
+                break;
+            }
+
+            let start = token.span.start_char_idx;
+            let end = token.span.start_char_idx as i32 + token.span.length;
+
+            let slice = if start < end as usize {
+                content[start..end as usize].to_string()
+            } else {
+                content[end as usize..start].to_string()
+            };
+
+            eprintln!(
+                "[token] {:<16} | {:<16} | {:<9} | {:<9} | {}",
+                format!("{:?}", token.kind),
+                format!("{}", token.value),
+                start,
+                end,
+                format!("{}", slice),
+            );
+        }
     }
 
     let mut parser = parser::Parser::new(tokens);
@@ -123,9 +147,9 @@ pub fn run(file_name: &str, options: &BuildOptions) -> Result<i32, BuildError> {
     }
 
     let module = codegen::generate_code(&ast).map_err(BuildError::IrCodegen)?;
-    claude_print_ir::print_ir(&module);
+
     if options.emit_ir {
-        eprintln!("[ir] {module:#?}");
+        claude_print_ir::print_ir(&module);
     }
     Ok(0)
 

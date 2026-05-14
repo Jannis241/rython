@@ -343,6 +343,7 @@ fn format_primitive(value: &PrimitiveValue) -> String {
         PrimitiveValue::Bool(v) => format!("Bool({})", v),
         PrimitiveValue::Char(v) => format!("Char({:?})", v),
         PrimitiveValue::Pointer(id) => format!("Pointer({})", t(id)),
+        PrimitiveValue::Null => "Null".to_string(),
     }
 }
 

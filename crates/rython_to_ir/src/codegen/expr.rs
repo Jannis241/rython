@@ -23,7 +23,7 @@ impl IrGenerator {
                 binary_op,
                 rhs,
             } => self.gen_binary_op(lhs, binary_op, rhs),
-            Expr::NullLiteral => unimplemented!(), //vllt noch später machen
+            Expr::NullLiteral => self.gen_null_literal(),
             Expr::CharLiteral(character) => self.gen_charliteral(*character),
             Expr::ListLiteral(inner) => self.gen_list_literal(inner),
             Expr::Call {
@@ -487,22 +487,27 @@ impl IrGenerator {
         type_args: &Vec<Type>,
         arguments: &Vec<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        // neuer pfad: methoden aufruf wenn callee ein feld zugriff ist
+        // damit z.B. (f)(args) oder ((obj).method)(args) funktionieren
+        if let Expr::Grouping(inner) = callee.deref() {
+            return self.gen_call(inner, type_args, arguments);
+        }
+
         // obj.method(args) wird zu Struct_method(obj args)
         if let Expr::FieldAccess { object, field_name } = callee.deref() {
             return self.gen_method_call(object, field_name, arguments);
         }
 
-        let mut arg_temp_ids = vec![];
+        // indirekte calls (z.B. getFn()(), arr[0]()) sind nicht supported:
+        let function_name = match callee.deref() {
+            Expr::Variable(name) => name.clone(),
+            other => return Err(CodegenError::InvalidExpr(other.clone())),
+        };
 
+        let mut arg_temp_ids = vec![];
         for arg in arguments {
             arg_temp_ids.push(self.gen_expr(arg)?.0);
         }
 
-        let function_name = match *callee.clone() {
-            Expr::Variable(name) => name,
-            _ => unimplemented!(),
-        };
         let return_type = self
             .functions_return_type
             .get(&function_name)
@@ -683,6 +688,26 @@ impl IrGenerator {
     ) -> Result<(TempId, IrType), CodegenError> {
         let (tmp_id_1, ir_type) = self.gen_expr(value)?;
 
+        //mangle maige
+        // -x wird zu Struct_-(x) !x zu Struct_!(x) ~x zu Struct_~(x)
+        if let Some(struct_name) = Self::struct_name_from_ty(&ir_type) {
+            let op_str = Self::unary_op_to_str(unary_op).to_string();
+            let key = (struct_name, op_str);
+            if let Some((mangled_name, return_ty)) =
+                self.unary_operator_functions.get(&key).cloned()
+            {
+                let temp_id = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Call {
+                        temp_id,
+                        function_name: mangled_name,
+                        args: vec![tmp_id_1],
+                        return_type: return_ty.clone(),
+                    })?;
+                return Ok((temp_id, return_ty));
+            }
+        }
+
         Self::check_unary_op_type(unary_op, &ir_type)?;
         let ir_unary_op = Self::convert_to_ir_unary_op(unary_op);
 
@@ -696,6 +721,14 @@ impl IrGenerator {
         self.block_handler
             .add_instruction_to_current_block(instruction)?;
         return Ok((temp_var, ir_type));
+    }
+
+    fn unary_op_to_str(op: &UnaryOp) -> &'static str {
+        match op {
+            UnaryOp::Neg => "-",
+            UnaryOp::Not => "!",
+            UnaryOp::BitNot => "~",
+        }
     }
 
     fn get_binary_expr_result_type(
@@ -747,19 +780,11 @@ impl IrGenerator {
         let (temp_id_1, ir_type_1) = self.gen_expr(lhs)?;
         let (temp_id_2, ir_type_2) = self.gen_expr(rhs)?;
 
-        //operator aalung fals es  ein struct ist
-        let lhs_struct_name = match &ir_type_1 {
-            IrType::Named(name) => Some(name.clone()),
-            IrType::Pointer(inner) => match inner.as_ref() {
-                IrType::Named(name) => Some(name.clone()),
-                _ => None,
-            },
-            _ => None,
-        };
+        //erst linke seit probieren dann rechte Seite
+        let op_str = Self::binary_op_to_str(binary_op).to_string();
 
-        if let Some(struct_name) = lhs_struct_name {
-            let op_str = Self::binary_op_to_str(binary_op).to_string();
-            let key = (struct_name, op_str);
+        if let Some(struct_name) = Self::struct_name_from_ty(&ir_type_1) {
+            let key = (struct_name, op_str.clone());
             if let Some((mangled_name, return_ty)) = self.operator_functions.get(&key).cloned() {
                 let temp_id = self.next_temp_id();
                 self.block_handler
@@ -767,6 +792,21 @@ impl IrGenerator {
                         temp_id: temp_id,
                         function_name: mangled_name,
                         args: vec![temp_id_1, temp_id_2],
+                        return_type: return_ty.clone(),
+                    })?;
+                return Ok((temp_id, return_ty));
+            }
+        }
+
+        if let Some(struct_name) = Self::struct_name_from_ty(&ir_type_2) {
+            let key = (struct_name, op_str);
+            if let Some((mangled_name, return_ty)) = self.operator_functions.get(&key).cloned() {
+                let temp_id = self.next_temp_id();
+                self.block_handler
+                    .add_instruction_to_current_block(IrInstruction::Call {
+                        temp_id: temp_id,
+                        function_name: mangled_name,
+                        args: vec![temp_id_2, temp_id_1],
                         return_type: return_ty.clone(),
                     })?;
                 return Ok((temp_id, return_ty));
@@ -949,5 +989,21 @@ impl IrGenerator {
             .add_instruction_to_current_block(new_const_instruction)?;
 
         Ok((temp_id, IrType::Bool))
+    }
+
+    fn gen_null_literal(&mut self) -> Result<(TempId, IrType), CodegenError> {
+        let temp_id = self.next_temp_id();
+        let ty = IrType::Pointer(Box::new(IrType::Void));
+
+        let new_const_instruction = IrInstruction::PrimitiveConst {
+            temp_id,
+            ty: ty.clone(),
+            value: PrimitiveValue::Null,
+        };
+
+        self.block_handler
+            .add_instruction_to_current_block(new_const_instruction)?;
+
+        Ok((temp_id, ty))
     }
 }

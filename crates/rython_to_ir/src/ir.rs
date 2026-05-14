@@ -181,6 +181,7 @@ pub enum PrimitiveValue {
     Bool(bool),
     Char(char),
     Pointer(TempId),
+    Null,
 }
 
 #[derive(Debug, Clone)]
