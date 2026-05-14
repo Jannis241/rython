@@ -20,7 +20,7 @@ impl IrGenerator {
 
         let (expr_value, expr_type) = self.gen_expr(&l.value)?;
 
-        if !self.types_compatible(&ir_type, &expr_type) {
+        if ir_type != expr_type {
             return Err(CodegenError::MismatchedTypes(ir_type, expr_type));
         }
 

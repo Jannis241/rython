@@ -585,7 +585,7 @@ impl IrGenerator {
         // parameter typen überprüfen
         let mut arg_temp_ids = vec![];
         for ((arg_temp, arg_ty), expected_ty) in actual_args.iter().zip(func_sig.params.iter()) {
-            if !self.types_compatible(&arg_ty, &expected_ty) {
+            if &arg_ty != &expected_ty {
                 return Err(CodegenError::MismatchedTypes(
                     expected_ty.clone(),
                     arg_ty.clone(),
@@ -646,7 +646,7 @@ impl IrGenerator {
         // parameter typen überprüfen
         let mut arg_temp_ids = vec![];
         for ((arg_temp, arg_ty), expected_ty) in actual_args.iter().zip(func_sig.params.iter()) {
-            if !self.types_compatible(&arg_ty, &expected_ty) {
+            if &arg_ty != &expected_ty {
                 return Err(CodegenError::MismatchedTypes(
                     expected_ty.clone(),
                     arg_ty.clone(),
@@ -699,10 +699,6 @@ impl IrGenerator {
         Ok((temp_id, IrType::Char))
     }
 
-    fn types_compatible(&self, expected: &IrType, got: &IrType) -> bool {
-        expected == got || matches!((expected, got), (IrType::Pointer(_), IrType::Null))
-    }
-
     fn gen_assign(
         &mut self,
         target: &Box<Expr>,
@@ -712,7 +708,7 @@ impl IrGenerator {
 
         let (temp_value_var, value_type) = self.gen_expr(value)?;
 
-        if !self.types_compatible(&target_type, &value_type) {
+        if &target_type != &value_type {
             return Err(CodegenError::MismatchedTypes(
                 target_type.clone(),
                 value_type,
