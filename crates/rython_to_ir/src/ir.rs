@@ -8,6 +8,12 @@ pub struct IrModule {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunctionSignaturIr {
+    pub params: Vec<IrType>,
+    pub return_type: Option<IrType>,
+}
+
+#[derive(Debug, Clone)]
 pub struct IrGlobal {
     pub name: String,
     pub ty: IrType,
@@ -104,9 +110,9 @@ pub enum IrInstruction {
     // functions
     Call {
         temp_id: TempId, // Wert-Temp fuer den Rueckgabewert; None, wenn die Funktion void liefert.
-        function_name: String,   // Name der aufgerufenen Funktion.
-        args: Vec<TempId>,       // Wert-Temps der bereits berechneten Argumente.
-        return_type: IrType,     // Rueckgabetyp der Funktion.
+        function_name: String, // Name der aufgerufenen Funktion.
+        args: Vec<TempId>, // Wert-Temps der bereits berechneten Argumente.
+        return_type: IrType, // Rueckgabetyp der Funktion.
     },
     GlobalAddr {
         temp_id: TempId, // Adress-Temp: enthaelt danach die Adresse des globalen Symbols.
@@ -204,6 +210,7 @@ pub enum IrType {
     Void,
     F64,
     Char,
+    Null,
     Named(String),
     Pointer(Box<IrType>),
 }

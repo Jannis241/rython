@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crate::ast::{Asm, Expr, Function, Item, Param, Type};
 use crate::codegen::generator;
 use crate::ir::{
-    IrBlock, IrConstant, IrField, IrFunction, IrGlobal, IrInstruction, IrModule, IrType,
-    IrTypeDefinition, PrimitiveValue, TempId, Terminator,
+    FunctionSignaturIr, IrBlock, IrConstant, IrField, IrFunction, IrGlobal, IrInstruction,
+    IrModule, IrType, IrTypeDefinition, PrimitiveValue, TempId, Terminator,
 };
 
 use super::error::CodegenError;
@@ -18,13 +18,14 @@ pub struct IrGenerator {
     pub(super) scopes: Vec<Scope>,
     pub(super) module: IrModule,
     pub(super) block_handler: BlockHandler,
-    pub(super) functions_return_type: HashMap<String, Option<IrType>>,
+    pub(super) function_signatures: HashMap<String, FunctionSignaturIr>,
     pub(super) current_mangel_prefix: Vec<String>,
     // (struct_name, operator_string) -> (mangled_function_name, return_type)
     pub(super) operator_functions: HashMap<(String, String), (String, IrType)>,
     // (struct_name, operator_string) -> (mangled_function_name, return_type)
     pub(super) unary_operator_functions: HashMap<(String, String), (String, IrType)>,
     pub(super) struct_names: HashSet<String>,
+    pub(super) type_names: HashSet<String>,
     pub(super) block_label_counter: usize,
     // (continue_target, break_target)
     pub(super) loop_stack: Vec<(String, String)>,
@@ -128,9 +129,10 @@ impl IrGenerator {
             temp_counter: 0,
             current_expected_return_type: IrType::Void,
             scopes: Vec::new(),
+            type_names: HashSet::new(),
             type_defs: Vec::new(),
             block_handler: BlockHandler::init(),
-            functions_return_type: HashMap::new(),
+            function_signatures: HashMap::new(),
             module: IrModule::new(),
             current_mangel_prefix: Vec::new(),
             operator_functions: HashMap::new(),
@@ -149,7 +151,7 @@ impl IrGenerator {
 
     pub fn handle_parameters(&mut self, params: &Vec<Param>) -> Result<(), CodegenError> {
         for (index, parameter) in params.iter().enumerate() {
-            let parameter_type = self.convert_to_ir_type(&parameter.param_type);
+            let parameter_type = self.convert_to_ir_type(&parameter.param_type)?;
 
             // 1. platz für den Typ des Parameters allocaten und einen poointer zu der
             // Addr in temp_var_alloc_pointer speichern
@@ -242,7 +244,7 @@ impl IrGenerator {
                 .return_type
                 .clone()
                 .unwrap_or(Type::Named("void".to_string())),
-        );
+        )?;
 
         // parameter handeln
         self.handle_parameters(&function.params)?;
@@ -262,27 +264,34 @@ impl IrGenerator {
             .finish_blocks(&self.current_expected_return_type)?;
 
         // Parameter zu IrField machen
-        let params = function
+        let params: Result<Vec<IrField>, CodegenError> = function
             .params
             .iter()
-            .map(|param| IrField {
-                name: param.name.clone(),
-                ty: self.convert_to_ir_type(&param.param_type),
+            .map(|param| {
+                Ok(IrField {
+                    name: param.name.clone(),
+                    ty: self.convert_to_ir_type(&param.param_type)?,
+                })
             })
             .collect();
 
+        let params = params?;
+
         // function name mangeln
         let name = self.mangel(function.name.clone());
+
+        let return_type = function
+            .return_type
+            .clone()
+            .unwrap_or(Type::Named("void".to_string()));
+
+        let return_type = self.convert_to_ir_type(&return_type)?;
 
         // Fertige funktion bauen und returnen
         Ok(IrFunction {
             name,
             parameter: params,
-            return_type: function
-                .return_type
-                .as_ref()
-                .map(|t| self.convert_to_ir_type(t))
-                .unwrap_or(IrType::Void),
+            return_type,
             blocks,
         })
     }
@@ -295,20 +304,23 @@ impl IrGenerator {
 
     // Struct-Typen werden einheitlich als Pointer<Named> dargestellt.
     // collect_struct_names muss vorher gelaufen sein, damit struct_names befuellt ist.
-    pub(super) fn convert_to_ir_type(&self, ty: &Type) -> IrType {
+    // unbekannte typen werden jetzt direkt als error gecatched
+    pub(super) fn convert_to_ir_type(&self, ty: &Type) -> Result<IrType, CodegenError> {
         match ty {
             Type::Named(name) => match name.as_str() {
-                "int" => IrType::I64,
-                "float" => IrType::F64,
-                "bool" => IrType::Bool,
-                "void" => IrType::Void,
-                "char" => IrType::Char,
+                "int" => Ok(IrType::I64),
+                "float" => Ok(IrType::F64),
+                "bool" => Ok(IrType::Bool),
+                "void" => Ok(IrType::Void),
+                "char" => Ok(IrType::Char),
                 other => {
                     let inner = IrType::Named(other.to_string());
                     if self.struct_names.contains(other) {
-                        IrType::Pointer(Box::new(inner))
+                        Ok(IrType::Pointer(Box::new(inner)))
+                    } else if self.type_names.contains(other) {
+                        Ok(inner)
                     } else {
-                        inner
+                        Err(CodegenError::UnknownType(other.to_string()))
                     }
                 }
             },
@@ -318,52 +330,97 @@ impl IrGenerator {
         }
     }
 
-    pub(super) fn collect_struct_names(&mut self, items: &[Item]) {
+    pub(super) fn collect_type_names(&mut self, items: &[Item]) -> Result<(), CodegenError> {
         for item in items {
-            if let Item::Struct(s) = item {
-                self.struct_names.insert(s.struct_name.clone());
+            let name = match item {
+                Item::Struct(s) => {
+                    self.struct_names.insert(s.struct_name.clone());
+                    Some(&s.struct_name)
+                }
+                Item::Variant(v) => Some(&v.variant_name),
+                _ => None,
+            };
+
+            if let Some(name) = name {
+                if !self.type_names.insert(name.clone()) {
+                    return Err(CodegenError::DuplicateType(name.clone()));
+                }
             }
         }
+        Ok(())
     }
 
-    pub(super) fn preprocces_function_return_types(&mut self, items: &[Item]) {
+    pub(super) fn preprocces_functions(&mut self, items: &[Item]) -> Result<(), CodegenError> {
         for item in items {
             match item {
                 Item::Function(f) => {
                     let return_ty = if let Some(rt) = f.return_type.clone() {
-                        Some(self.convert_to_ir_type(&rt))
+                        Some(self.convert_to_ir_type(&rt)?)
                     } else {
                         None
                     };
-                    self.functions_return_type.insert(
-                        //TODO: generic Params
-                        f.name.clone(),
-                        return_ty,
-                    );
+
+                    let params = f
+                        .params
+                        .iter()
+                        .map(|p| self.convert_to_ir_type(&p.param_type))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let func_sig = FunctionSignaturIr {
+                        return_type: return_ty,
+                        params,
+                    };
+                    if self
+                        .function_signatures
+                        .insert(f.name.clone(), func_sig)
+                        .is_some()
+                    {
+                        return Err(CodegenError::DuplicateFunction(f.name.clone()));
+                    }
                 }
                 _ => {}
             }
         }
+        Ok(())
     }
 
     // registriert die return typen aller struct methoden unter ihrem mangled namen
     // damit method calls Struct_method(...) den richtigen typ finden
-    pub(super) fn preprocess_method_return_types(&mut self, items: &[Item]) {
+    pub(super) fn preprocess_method_return_types(
+        &mut self,
+        items: &[Item],
+    ) -> Result<(), CodegenError> {
         for item in items {
             if let Item::Struct(s) = item {
                 self.add_to_current_mangel_prefix(s.struct_name.clone());
                 for f in s.functions.iter() {
                     let mangled = self.mangel(f.name.clone());
                     let return_ty = if let Some(rt) = f.return_type.clone() {
-                        Some(self.convert_to_ir_type(&rt))
+                        Some(self.convert_to_ir_type(&rt)?)
                     } else {
                         None
                     };
-                    self.functions_return_type.insert(mangled, return_ty);
+
+                    let params = f
+                        .params
+                        .iter()
+                        .map(|p| self.convert_to_ir_type(&p.param_type))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let func_sig = FunctionSignaturIr {
+                        return_type: return_ty,
+                        params,
+                    };
+                    if self
+                        .function_signatures
+                        .insert(mangled.clone(), func_sig)
+                        .is_some()
+                    {
+                        return Err(CodegenError::DuplicateFunction(mangled));
+                    }
                 }
                 self.pop_last_mangel_prefix();
             }
         }
+        Ok(())
     }
 
     pub fn add_to_current_mangel_prefix<T: ToString>(&mut self, add: T) {
@@ -397,7 +454,7 @@ impl IrGenerator {
                     for parser_field in structdef.fields.iter() {
                         ir_fields.push(IrField {
                             name: parser_field.field_name.clone(),
-                            ty: self.convert_to_ir_type(&parser_field.field_type),
+                            ty: self.convert_to_ir_type(&parser_field.field_type)?,
                         });
                     }
 
@@ -427,12 +484,11 @@ impl IrGenerator {
     pub fn generate_code_inner(&mut self, items: &[Item]) -> Result<(), CodegenError> {
         // muss als allererstes laufen: convert_to_ir_type braucht struct_names um
         // Struct-Namen einheitlich als Pointer<Named> auszugeben.
-        self.collect_struct_names(items);
-
-        self.preprocces_function_return_types(items);
-        self.preprocess_method_return_types(items);
+        self.collect_type_names(items)?;
+        self.preprocces_functions(items)?;
+        self.preprocess_method_return_types(items)?;
         self.preprocces_type_defs(items)?;
-        self.preprocess_operators(items);
+        self.preprocess_operators(items)?;
         self.process_consts_and_globals(items)?;
 
         for item in items {
@@ -465,7 +521,7 @@ impl IrGenerator {
         return Ok(());
     }
 
-    pub(super) fn preprocess_operators(&mut self, items: &[Item]) {
+    pub(super) fn preprocess_operators(&mut self, items: &[Item]) -> Result<(), CodegenError> {
         // erzeugt die gleichen mangled Namen wie gen_func_struct für struct Methods.
         // herausfinden ob binary op oder unary op
         for item in items {
@@ -474,23 +530,41 @@ impl IrGenerator {
                 for f in s.functions.iter() {
                     if let Some(op) = &f.operator {
                         let mangled = self.mangel(f.name.clone());
-                        let return_ty = f
+
+                        let return_type = f
                             .return_type
-                            .as_ref()
-                            .map(|t| self.convert_to_ir_type(t))
-                            .unwrap_or(IrType::Void);
-                        if f.params.is_empty() {
-                            self.unary_operator_functions
-                                .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
-                        } else {
-                            self.operator_functions
-                                .insert((s.struct_name.clone(), op.clone()), (mangled, return_ty));
+                            .clone()
+                            .unwrap_or(Type::Named("void".to_string()));
+                        let return_type = self.convert_to_ir_type(&return_type)?;
+                        let key = (s.struct_name.clone(), op.clone());
+                        match f.params.len() {
+                            1 => {
+                                if self
+                                    .unary_operator_functions
+                                    .insert(key, (mangled.clone(), return_type))
+                                    .is_some()
+                                {
+                                    return Err(CodegenError::AmbigousFunction(mangled));
+                                }
+                            }
+                            2 => {
+                                if self
+                                    .operator_functions
+                                    .insert(key, (mangled.clone(), return_type))
+                                    .is_some()
+                                {
+                                    return Err(CodegenError::AmbigousFunction(mangled));
+                                }
+                            }
+                            _ => return Err(CodegenError::InvalidItem(Item::Function(f.clone()))),
                         }
                     }
                 }
+
                 self.pop_last_mangel_prefix();
             }
         }
+        Ok(())
     }
 
     pub(super) fn process_consts_and_globals(
@@ -506,7 +580,7 @@ impl IrGenerator {
                     {
                         return Err(CodegenError::DuplicateGlobal(name.clone()));
                     }
-                    let declared_ty = self.convert_to_ir_type(&const_var.var_type);
+                    let declared_ty = self.convert_to_ir_type(&const_var.var_type)?;
                     let (val_ty, val) = self.eval_const_expr(&const_var.value)?;
                     if val_ty != declared_ty {
                         return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
@@ -524,7 +598,7 @@ impl IrGenerator {
                     {
                         return Err(CodegenError::DuplicateGlobal(name.clone()));
                     }
-                    let declared_ty = self.convert_to_ir_type(&global_var.var_type);
+                    let declared_ty = self.convert_to_ir_type(&global_var.var_type)?;
                     let (val_ty, val) = self.eval_const_expr(&global_var.value)?;
                     if val_ty != declared_ty {
                         return Err(CodegenError::MismatchedTypes(declared_ty, val_ty));
@@ -560,10 +634,7 @@ impl IrGenerator {
             }
             Expr::BoolLiteral(b) => Ok((IrType::Bool, PrimitiveValue::Bool(*b))),
             Expr::CharLiteral(c) => Ok((IrType::Char, PrimitiveValue::Char(*c))),
-            Expr::NullLiteral => Ok((
-                IrType::Pointer(Box::new(IrType::Void)),
-                PrimitiveValue::Null,
-            )),
+            Expr::NullLiteral => Ok((IrType::Null, PrimitiveValue::Null)),
             //Todo andere exprs machen die auch in ein const/ global gespeichert werden können
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }

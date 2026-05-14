@@ -1,0 +1,55 @@
+jeskos (ai slop producer) bugs von jannis (sigma) gefixxt:
+
+
+stmt.rs
+
+- gen_return:
+    - wenn man void returnt wird nicht mehr Terminator::Ret(Some(Void)) erstellt sondern Terminator::Ret(None),
+    - zb bei:
+        fn a() {
+
+        }
+
+        fn main() {
+            return a();
+        }
+
+        wird nicht mehr einfach das ergebnis von a returnt als Some value also in dem fall dann Some(void) sondern geguckt ob
+        es void ist und dann None returnt
+
+
+expr.rs
+
+- variants richtig gemacht mit InitVariant instruction -> vielleicht will jesko eierkopf das auch anders handeln aber wir haben die instruction ja extra
+
+- gen_call, method und method mit tempid
+    - parameter werden gar nicht gecheckt ob die typen richtig sind (holy slop)
+    - folgendes funktioniert aktuell:
+
+        fn add(a: int, b: int) int {
+            return a + b;
+        }
+
+        fn main() {
+            add(true)
+        }
+    - Fix:
+        - return type wurde jetzt in ein function signature struct gepackt wo auch die parameter gehandelt werdne (im preprocessing)
+        - danach werden die übergebenen parameter gecheckt ob sie korrekt sind
+
+
+generator.rs
+
+- type_names geaddet damit man später leicht checken kann ob es den typ gibt (würde auch über type defs gehen aber so ist einfacher)
+- +gecheckt ob man typen doppelt definiert
+- convert to ir type returnt jetzt ein result falls es den IrType nicht gibt -> es wurde als jetzt geändert dass es jeden
+IrType schon geben muss, man kann nicht mehr einfach neue typen erstellen die dann in named rein kommen, es gibt nur primitve typen oder welche
+die durch type definitions erstellt wurden
+- pre process functions checkt jetzt auch ob es die funciton schon gibt, damit man sie nicht doppelt implemntieren kann
+--------> dasselbe auch bei preprocess method return type
+
+
+- Null als IrType hinzugefügt (ich meine warum nicht?!?!??!)
+
+- helper function "types compatible" geaddet
+    -> dann kann man zb machen let p: Person = null; ohne dass es einen error gibt

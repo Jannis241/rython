@@ -1,24 +1,2 @@
-Parser (parser.rs)
-
-                                        SPÄTER:
-                                          - Turbofish unreachable (parser.rs:320 — unimplemented!() for ::<…>). Generic calls are syntactically broken.
-                                          - Type grammar has no pointer/reference syntax, no generic args on types (List<int> as a type isn't parsable through
-                                          parse_type, only through parse_type_args).
-
-IR generation (codegen/):
-
-                                          SPÄTER:
-                                              - if/while/loop don't track unreachable merge blocks well — gen_loop always creates an end block even when the body
-                                              unconditionally returns/never breaks, leading to an unterminated dead block (caught later by MissingTerminator).
-                                              - No traits / trait impls — generate_code_inner returns InvalidItem for Item::Trait and Item::TraitImplementation
-                                              (generator.rs:457). Import also rejected.
-                                              - No generics — convert_to_ir_type panics on Type::AnyTrait (generator.rs:313); generic params are collected but
-                                              never substituted.
-                                              - Stmt::For not implemented — no iteration protocol.
-
-  - Type::Named lookup is string-based — no validation that a named type exists outside the struct/variant tables. void
-   only works as a string literal in the return type.
-
-  - No drop/destructor semantics; structs are stack Allocas that escape via pointer (gen_struct_literal returns the
-  stack address), so returning a struct literal would dangle.
-
+- Operator calls haben immernoch den selben bug wie die alten calls (parameter werden nicht gecheckt)
+    -> func signatur muss auch in operator functions impolementiert werden und dann später gecheckt werden

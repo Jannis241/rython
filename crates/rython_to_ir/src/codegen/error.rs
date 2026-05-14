@@ -6,6 +6,11 @@ pub enum CodegenError {
     InvalidItem(Item),
     MismatchedTypes(IrType, IrType), // expected type, got
 
+    WrongArgumentCount(String, usize, usize), // Func name, expected args, got
+    //
+    DuplicateType(String),
+    DuplicateFunction(String),
+
     ExpectedPrimitiveValue,
 
     InvalidBinaryOp(IrType, IrType), // zb 1 + true

@@ -8,7 +8,7 @@ use super::generator::IrGenerator;
 
 impl IrGenerator {
     pub(super) fn gen_let(&mut self, l: &Let) -> Result<(), CodegenError> {
-        let ir_type = self.convert_to_ir_type(&l.var_type.clone()); // Todo: warum kann var type none sein??? -> für type inference später vllt zb let x = 10; -> jz grade muss man immer let x: iint = 19;
+        let ir_type = self.convert_to_ir_type(&l.var_type.clone())?;
 
         let id_for_alloc = self.next_temp_id();
 
@@ -20,7 +20,7 @@ impl IrGenerator {
 
         let (expr_value, expr_type) = self.gen_expr(&l.value)?;
 
-        if ir_type != expr_type {
+        if !self.types_compatible(&ir_type, &expr_type) {
             return Err(CodegenError::MismatchedTypes(ir_type, expr_type));
         }
 
@@ -47,8 +47,21 @@ impl IrGenerator {
                         ret_t,
                     ));
                 }
-                self.block_handler
-                    .add_terminator(Terminator::Ret(Some(temp_id)))?;
+                if ret_t == IrType::Void {
+                    self.block_handler.add_terminator(Terminator::Ret(None))?;
+                    // Fix, dass wenn man zb macht:
+                    // fn foo() {}
+                    // fn main() {
+                    //      return foo();
+                    // }
+                    // der return type nicht Some(<ergebnis von foo>) ist sondern None, da es void
+                    // ist
+                    // => void sollte kein wert sein den man wirklich returnt also sozusagen nicht
+                    // Terminator::Ret(Some(void))
+                } else {
+                    self.block_handler
+                        .add_terminator(Terminator::Ret(Some(temp_id)))?;
+                }
 
                 Ok(())
             }

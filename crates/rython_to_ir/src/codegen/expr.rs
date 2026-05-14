@@ -58,12 +58,21 @@ impl IrGenerator {
     ) -> Result<(TempId, IrType), CodegenError> {
         let cases = self.get_variant_cases(variant_name)?;
 
-        let case_idx = cases
-            .iter()
-            .position(|c| c == case_name)
-            .ok_or(CodegenError::UnknownField(case_name.clone()))?;
+        if !cases.contains(case_name) {
+            return Err(CodegenError::UnknownField(case_name.clone()));
+        }
 
-        self.gen_intliteral(&case_idx.to_string())
+        let temp_id = self.next_temp_id();
+        let ty = IrType::Named(variant_name.clone());
+
+        self.block_handler
+            .add_instruction_to_current_block(IrInstruction::InitVariant {
+                temp_id,
+                ty: ty.clone(),
+                case_name: case_name.clone(),
+            })?;
+
+        Ok((temp_id, ty))
     }
 
     fn get_variant_cases(&self, variant_name: &String) -> Result<Vec<String>, CodegenError> {
@@ -503,17 +512,31 @@ impl IrGenerator {
             other => return Err(CodegenError::InvalidExpr(other.clone())),
         };
 
-        let mut arg_temp_ids = vec![];
-        for arg in arguments {
-            arg_temp_ids.push(self.gen_expr(arg)?.0);
-        }
-
-        let return_type = self
-            .functions_return_type
+        let func_sig = self
+            .function_signatures
             .get(&function_name)
             .ok_or(CodegenError::UnknownFunction(function_name.clone()))?
-            .clone()
-            .unwrap_or(IrType::Void);
+            .clone();
+
+        if func_sig.params.len() != arguments.len() {
+            return Err(CodegenError::WrongArgumentCount(
+                function_name,
+                func_sig.params.len(),
+                arguments.len(),
+            ));
+        }
+
+        // parameter typen überprüfen
+        let mut arg_temp_ids = vec![];
+        for (arg, expected_ty) in arguments.iter().zip(func_sig.params.iter()) {
+            let (arg_temp, arg_typ) = self.gen_expr(arg)?;
+            if &arg_typ != expected_ty {
+                return Err(CodegenError::MismatchedTypes(expected_ty.clone(), arg_typ));
+            }
+            arg_temp_ids.push(arg_temp);
+        }
+
+        let return_type = func_sig.clone().return_type.unwrap_or(IrType::Void);
 
         let temp_id = self.next_temp_id();
         self.block_handler
@@ -537,18 +560,41 @@ impl IrGenerator {
         let struct_name = Self::struct_name_from_ty(&obj_ty)
             .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
         let mangled = format!("{}_{}", struct_name, method_name);
+        let func_sig = self
+            .function_signatures
+            .get(&mangled)
+            .ok_or(CodegenError::UnknownFunction(mangled.clone()))?
+            .clone();
 
-        let mut arg_temp_ids = vec![obj_temp];
+        let mut actual_args = vec![(obj_temp, obj_ty)];
+        // das sind die wirklichen argumente mit this ganz vorne
+
         for arg in arguments {
-            arg_temp_ids.push(self.gen_expr(arg)?.0);
+            actual_args.push(self.gen_expr(arg)?);
         }
 
-        let return_type = self
-            .functions_return_type
-            .get(&mangled)
-            .ok_or_else(|| CodegenError::UnknownFunction(mangled.clone()))?
-            .clone()
-            .unwrap_or(IrType::Void);
+        // dadurch dass this in acutal args drin ist kann man die beiden längen jetzt vergleicehn
+        if func_sig.params.len() != actual_args.len() {
+            return Err(CodegenError::WrongArgumentCount(
+                mangled,
+                func_sig.params.len(),
+                actual_args.len(),
+            ));
+        }
+
+        // parameter typen überprüfen
+        let mut arg_temp_ids = vec![];
+        for ((arg_temp, arg_ty), expected_ty) in actual_args.iter().zip(func_sig.params.iter()) {
+            if !self.types_compatible(&arg_ty, &expected_ty) {
+                return Err(CodegenError::MismatchedTypes(
+                    expected_ty.clone(),
+                    arg_ty.clone(),
+                ));
+            }
+            arg_temp_ids.push(*arg_temp);
+        }
+
+        let return_type = func_sig.clone().return_type.unwrap_or(IrType::Void);
 
         let temp_id = self.next_temp_id();
         self.block_handler
@@ -575,17 +621,41 @@ impl IrGenerator {
             .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
         let mangled = format!("{}_{}", struct_name, method_name);
 
-        let mut arg_temp_ids = vec![obj_temp];
+        let func_sig = self
+            .function_signatures
+            .get(&mangled)
+            .ok_or(CodegenError::UnknownFunction(mangled.clone()))?
+            .clone();
+
+        let mut actual_args = vec![(obj_temp, obj_ty)];
+        // das sind die wirklichen argumente mit this ganz vorne
+
         for arg in arguments {
-            arg_temp_ids.push(self.gen_expr(arg)?.0);
+            actual_args.push(self.gen_expr(arg)?);
         }
 
-        let return_type = self
-            .functions_return_type
-            .get(&mangled)
-            .ok_or_else(|| CodegenError::UnknownFunction(mangled.clone()))?
-            .clone()
-            .unwrap_or(IrType::Void);
+        // dadurch dass this in acutal args drin ist kann man die beiden längen jetzt vergleicehn
+        if func_sig.params.len() != actual_args.len() {
+            return Err(CodegenError::WrongArgumentCount(
+                mangled,
+                func_sig.params.len(),
+                actual_args.len(),
+            ));
+        }
+
+        // parameter typen überprüfen
+        let mut arg_temp_ids = vec![];
+        for ((arg_temp, arg_ty), expected_ty) in actual_args.iter().zip(func_sig.params.iter()) {
+            if !self.types_compatible(&arg_ty, &expected_ty) {
+                return Err(CodegenError::MismatchedTypes(
+                    expected_ty.clone(),
+                    arg_ty.clone(),
+                ));
+            }
+            arg_temp_ids.push(*arg_temp);
+        }
+
+        let return_type = func_sig.clone().return_type.unwrap_or(IrType::Void);
 
         let temp_id = self.next_temp_id();
         self.block_handler
@@ -629,6 +699,10 @@ impl IrGenerator {
         Ok((temp_id, IrType::Char))
     }
 
+    fn types_compatible(&self, expected: &IrType, got: &IrType) -> bool {
+        expected == got || matches!((expected, got), (IrType::Pointer(_), IrType::Null))
+    }
+
     fn gen_assign(
         &mut self,
         target: &Box<Expr>,
@@ -638,7 +712,7 @@ impl IrGenerator {
 
         let (temp_value_var, value_type) = self.gen_expr(value)?;
 
-        if target_type != value_type {
+        if !self.types_compatible(&target_type, &value_type) {
             return Err(CodegenError::MismatchedTypes(
                 target_type.clone(),
                 value_type,
