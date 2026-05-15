@@ -21,6 +21,7 @@ stmt.rs
 expr.rs
 
 - variants richtig gemacht mit InitVariant instruction -> vielleicht will jesko eierkopf das auch anders handeln aber wir haben die instruction ja extra
+    -> dann kann man zb machen let p: Person = null; ohne dass es einen error gibt
 
 - gen_call, method und method mit tempid
     - parameter werden gar nicht gecheckt ob die typen richtig sind (holy slop)
@@ -48,8 +49,4 @@ die durch type definitions erstellt wurden
 - pre process functions checkt jetzt auch ob es die funciton schon gibt, damit man sie nicht doppelt implemntieren kann
 --------> dasselbe auch bei preprocess method return type
 
-
-- Null als IrType hinzugefügt (ich meine warum nicht?!?!??!)
-
-- helper function "types compatible" geaddet
-    -> dann kann man zb machen let p: Person = null; ohne dass es einen error gibt
+null als Ir type hinzugefügt

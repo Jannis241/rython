@@ -1,2 +1,0 @@
-- Operator calls haben immernoch den selben bug wie die alten calls (parameter werden nicht gecheckt)
-    -> func signatur muss auch in operator functions impolementiert werden und dann später gecheckt werden

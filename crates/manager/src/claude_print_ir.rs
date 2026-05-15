@@ -333,6 +333,7 @@ fn format_type(ty: &IrType) -> String {
         IrType::Char => "Char".to_string(),
         IrType::Named(name) => format!("Named({:?})", name),
         IrType::Pointer(inner) => format!("Pointer({})", format_type(inner)),
+        IrType::Null => "Null".to_string(),
     }
 }
 

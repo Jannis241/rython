@@ -2397,6 +2397,14 @@ fn source_items_parse_full_program_shape() {
 }
 
 #[test]
+fn all_features_example_parses() {
+    let source = include_str!("../../../../examples/all_features.ry");
+    let items = parse_items_source(source).unwrap();
+
+    assert!(!items.is_empty());
+}
+
+#[test]
 fn source_items_parse_global_and_const_declarations() {
     let items = parse_items_source("global counter: int = 0; const answer: int = 42;").unwrap();
 
