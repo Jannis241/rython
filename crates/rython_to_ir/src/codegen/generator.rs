@@ -20,10 +20,10 @@ pub struct IrGenerator {
     pub(super) block_handler: BlockHandler,
     pub(super) function_signatures: HashMap<String, FunctionSignaturIr>,
     pub(super) current_mangel_prefix: Vec<String>,
+    // (struct_name, operator_string) -> (mangled_function_name, func_signatur)
+    pub(super) operator_functions: HashMap<(String, String), (String, FunctionSignaturIr)>,
     // (struct_name, operator_string) -> (mangled_function_name, return_type)
-    pub(super) operator_functions: HashMap<(String, String), (String, IrType)>,
-    // (struct_name, operator_string) -> (mangled_function_name, return_type)
-    pub(super) unary_operator_functions: HashMap<(String, String), (String, IrType)>,
+    pub(super) unary_operator_functions: HashMap<(String, String), (String, FunctionSignaturIr)>,
     pub(super) struct_names: HashSet<String>,
     pub(super) type_names: HashSet<String>,
     pub(super) block_label_counter: usize,
@@ -536,12 +536,28 @@ impl IrGenerator {
                             .clone()
                             .unwrap_or(Type::Named("void".to_string()));
                         let return_type = self.convert_to_ir_type(&return_type)?;
+
+                        let params: Result<Vec<IrType>, CodegenError> = f
+                            .params
+                            .iter()
+                            .map(|p| {
+                                let param_type = p.param_type.clone();
+                                let param_type = self.convert_to_ir_type(&param_type);
+                                param_type
+                            })
+                            .collect();
+                        let params = params?;
+                        let func_sig = FunctionSignaturIr {
+                            params,
+                            return_type: Some(return_type),
+                        };
+
                         let key = (s.struct_name.clone(), op.clone());
                         match f.params.len() {
                             1 => {
                                 if self
                                     .unary_operator_functions
-                                    .insert(key, (mangled.clone(), return_type))
+                                    .insert(key, (mangled.clone(), func_sig))
                                     .is_some()
                                 {
                                     return Err(CodegenError::AmbigousFunction(mangled));
@@ -550,7 +566,7 @@ impl IrGenerator {
                             2 => {
                                 if self
                                     .operator_functions
-                                    .insert(key, (mangled.clone(), return_type))
+                                    .insert(key, (mangled.clone(), func_sig))
                                     .is_some()
                                 {
                                     return Err(CodegenError::AmbigousFunction(mangled));

@@ -348,20 +348,22 @@ impl IrGenerator {
                 let struct_name = Self::struct_name_from_ty(&lhs_ty)
                     .ok_or_else(|| CodegenError::UnknownType(format!("{lhs_ty:?}")))?;
                 let key = (struct_name.clone(), "[]".to_string());
-                let (mangled, return_ty) =
+                let (mangled, func_sig) =
                     self.operator_functions.get(&key).cloned().ok_or_else(|| {
                         CodegenError::UnknownFunction(format!("{}_[]", struct_name))
                     })?;
 
+                // TODO: Params chekcen?!?!?!??!?!
                 let temp_id = self.next_temp_id();
+                let return_type = func_sig.return_type.unwrap_or(IrType::Void);
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,
                         function_name: mangled,
                         args: vec![lhs_temp, idx_temp],
-                        return_type: return_ty.clone(),
+                        return_type: return_type.clone(),
                     })?;
-                Ok((temp_id, return_ty))
+                Ok((temp_id, return_type))
             }
         }
     }
@@ -763,18 +765,19 @@ impl IrGenerator {
         if let Some(struct_name) = Self::struct_name_from_ty(&ir_type) {
             let op_str = Self::unary_op_to_str(unary_op).to_string();
             let key = (struct_name, op_str);
-            if let Some((mangled_name, return_ty)) =
-                self.unary_operator_functions.get(&key).cloned()
+            if let Some((mangled_name, func_sig)) = self.unary_operator_functions.get(&key).cloned()
             {
                 let temp_id = self.next_temp_id();
+                // TODO: params chekcen
+                let return_type = func_sig.return_type.unwrap_or(IrType::Void);
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id,
                         function_name: mangled_name,
                         args: vec![tmp_id_1],
-                        return_type: return_ty.clone(),
+                        return_type: return_type.clone(),
                     })?;
-                return Ok((temp_id, return_ty));
+                return Ok((temp_id, return_type));
             }
         }
 
@@ -855,31 +858,41 @@ impl IrGenerator {
 
         if let Some(struct_name) = Self::struct_name_from_ty(&ir_type_1) {
             let key = (struct_name, op_str.clone());
-            if let Some((mangled_name, return_ty)) = self.operator_functions.get(&key).cloned() {
+            if let Some((mangled_name, func_sig)) = self.operator_functions.get(&key).cloned() {
                 let temp_id = self.next_temp_id();
+                let return_type = func_sig.return_type.unwrap_or(IrType::Void);
+                // TODO: Parameter checken
+
+                let expected_arg_types = func_sig.params;
+                let got_arg_types = vec![ir_type_1, ir_type_2];
+
+                if expected_arg_types != got_arg_types {}
+
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,
                         function_name: mangled_name,
                         args: vec![temp_id_1, temp_id_2],
-                        return_type: return_ty.clone(),
+                        return_type: return_type.clone(),
                     })?;
-                return Ok((temp_id, return_ty));
+                return Ok((temp_id, return_type));
             }
         }
 
         if let Some(struct_name) = Self::struct_name_from_ty(&ir_type_2) {
             let key = (struct_name, op_str);
-            if let Some((mangled_name, return_ty)) = self.operator_functions.get(&key).cloned() {
+            if let Some((mangled_name, func_sig)) = self.operator_functions.get(&key).cloned() {
                 let temp_id = self.next_temp_id();
+                let return_type = func_sig.return_type.unwrap_or(IrType::Void);
+                // TODO: Parameter checken
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,
                         function_name: mangled_name,
                         args: vec![temp_id_2, temp_id_1],
-                        return_type: return_ty.clone(),
+                        return_type: return_type.clone(),
                     })?;
-                return Ok((temp_id, return_ty));
+                return Ok((temp_id, return_type));
             }
         }
 
