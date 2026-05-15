@@ -10,6 +10,7 @@ Die wichtigsten echten Bugs liegen im bereits aktiven Lexer/Parser/IR-Codegen-Pf
 - `loop { return ... }` in nicht-void Funktionen wird wegen eines unerreichbaren, aber unterminierten `loop_end` Blocks abgelehnt.
 - Bestimmte normale Benutzereingaben mit `::` crashen den Compiler durch `unimplemented!()`.
 - Doppelte Parameter, Struct-Felder und Variant-Cases werden akzeptiert.
+- Methoden akzeptieren `this` an beliebiger Parameterposition, obwohl `obj.method(...)` `this` immer als erstes Argument uebergibt.
 - Token-Spans und `--emit-tokens` sind bei Unicode in Strings/Chars falsch.
 
 Verifiziert mit:
@@ -17,10 +18,20 @@ Verifiziert mit:
 ```text
 cargo test
 cargo test -p rython_to_ir
+cargo test -p rython_cli
+cargo test -p ir_to_assembly -p manager
 cargo run -q -p rython_cli -- --emit-ir --no-run <minimal>.ry
+cargo run -q -p rython_cli -- --emit-tokens --no-run <minimal>.ry
 ```
 
-`cargo test` ist aktuell nicht gruen. Ein Teil der Fehlschlaege kommt von offenbar veralteten Tests, die inzwischen implementierte Features noch als unsupported erwarten, sowie vom auskommentierten Assembly/Run-Pfad. Diese Punkte habe ich nicht als Compiler-Bugs gezaehlt.
+Aktueller Teststatus:
+
+- `cargo test`: rot.
+- `cargo test -p rython_to_ir`: rot, 313/324 Tests gruen. Die 11 Fehlschlaege stammen ueberwiegend von veralteten Testannahmen: globale/konstante Items und Kontrollfluss werden inzwischen unterstuetzt, mehrere Tests erwarten weiterhin Codegen nach einem bereits erzeugten `return`, mehrere Tests benutzen undefinierte `Named`-Typen wie `UserType`/`UserResult`, und alte Unsupported-Erwartungen passen nicht mehr.
+- `cargo test -p rython_cli`: rot, 5/8 Tests gruen. Die Fehlschlaege betreffen den auskommentierten Assembly/Link/Run-Pfad (`-o`, Exit-Code-Propagation) sowie eine veraltete Assertion auf `"Token"` statt der aktuellen `"[token]"`-Ausgabe.
+- `cargo test -p ir_to_assembly -p manager`: gruen.
+
+Diese Testfehlschlaege habe ich nicht als neue Compiler-Bugs gezaehlt, weil sie entweder zum unfertigen Backend-Pfad gehoeren oder offensichtlich nicht mehr zur aktuellen Compiler-Semantik passen. Die zehn unten dokumentierten Bugs sind dagegen im aktuellen Stand weiterhin reproduzierbar.
 
 ## Unterstützte Annahmen
 
@@ -42,10 +53,10 @@ Nicht als implementiert angenommen:
 
 Priorität: Kritisch  
 Bereich: Semantik/Codegen  
-Betroffene Dateien/Funktionen: `crates/rython_to_ir/src/codegen/generator.rs:524` (`preprocess_operators`), `crates/rython_to_ir/src/codegen/expr.rs:844` (`gen_binary_op`), `crates/rython_to_ir/src/codegen/expr.rs:281` (`gen_postfix`)
+Betroffene Dateien/Funktionen: `crates/rython_to_ir/src/codegen/generator.rs:524` (`preprocess_operators`), `crates/rython_to_ir/src/codegen/expr.rs:847` (`gen_binary_op`), `crates/rython_to_ir/src/codegen/expr.rs:281` (`gen_postfix`)
 
 Beschreibung:  
-Normale Funktions- und Methodenaufrufe pruefen die Argumenttypen gegen `function_signatures`. Operator-Overloads tun das nicht. `preprocess_operators` speichert fuer `(struct_name, op)` nur `(mangled_name, return_type)`. `gen_binary_op` und `gen_postfix` emittieren danach direkt `IrInstruction::Call`, ohne die Signaturparameter zu vergleichen.
+Normale Funktions- und Methodenaufrufe pruefen die Argumenttypen gegen `function_signatures`. Operator-Overloads tun das nicht. `preprocess_operators` speichert inzwischen zwar die komplette `FunctionSignaturIr`, aber `gen_binary_op` nutzt sie nicht wirksam: linksseitig gibt es nur einen leeren Block `if expected_arg_types != got_arg_types {}`, rechtsseitig fehlt die Pruefung komplett. `gen_postfix` fuer `[]` emittiert ebenfalls direkt `IrInstruction::Call`, ohne die Signaturparameter zu vergleichen.
 
 Minimales Beispiel:
 
@@ -80,10 +91,10 @@ Warum das ein echter Bug ist:
 Operator-Overloads sind implementiert und werden in `current_features`/Parser-Tests benutzt. Normale Calls haben bereits Typpruefung; Operator-Calls umgehen diese Semantik und erzeugen inkonsistente IR.
 
 Vermutete Ursache:  
-`operator_functions` und `unary_operator_functions` speichern keine vollstaendige `FunctionSignaturIr`. `gen_binary_op` nimmt den gefundenen Operator als passend an, sobald der Struct-Name und Operator-String passen.
+`gen_binary_op`/`gen_postfix` nehmen den gefundenen Operator als passend an, sobald Struct-Name und Operator-String passen. Die Signaturdaten sind vorhanden, werden aber nicht wie bei normalen Calls validiert.
 
 Fix-Vorschlag:  
-In den Operator-Maps die vollstaendige Signatur speichern oder den `mangled_name` gegen `function_signatures` nachschlagen. Vor dem Emittieren des Calls dieselbe Argumentanzahl- und Typpruefung wie in `gen_call`/`gen_method_call` ausfuehren.
+Vor dem Emittieren des Calls dieselbe Argumentanzahl- und Typpruefung wie in `gen_call`/`gen_method_call` ausfuehren. Das gilt fuer linksseitige und rechtsseitige binäre Operatoren, Unary-Operatoren und `[]`.
 
 Test-Vorschlag:
 
@@ -608,6 +619,8 @@ Ein Test sollte pruefen, dass `--emit-tokens` nicht verrutscht und fuer jedes To
 ## Nicht als Bug gezählt
 
 - `crates/ir_to_assembly/src/codegen.rs` ist leer und der Assembly/Link/Run-Pfad in `crates/manager/src/run.rs` ist auskommentiert. Die daraus folgenden CLI-Testfehlschlaege (`-o`, Exit-Code-Propagation, Binary-Erzeugung) wurden als unfertiger Backend-Pfad gewertet.
+- `rython_cli_tests::valid_file_is_lexed_and_parsed_by_cli` erwartet `"Token"`, die aktuelle Ausgabe benutzt aber `"[token]"`. Das ist ein Test-/Format-Drift, kein Compilerfehler.
+- Mehrere `rython_to_ir`-Tests erwarten noch Fehler fuer inzwischen implementierte Features, erlauben Code nach einem Terminator oder benutzen nicht deklarierte Named Types. Diese Fehlschlaege wurden als veraltete Tests gewertet.
 - Imports werden geparst, aber nicht im Codegen verarbeitet.
 - Traits, Trait-Implementations, `any` Trait-Typen und Generics sind sichtbar unfertig bzw. werden im Codegen abgelehnt oder enthalten TODOs.
 - `for` wird geparst, aber `Stmt::For` ist im Codegen nicht implementiert.
@@ -720,4 +733,3 @@ fn main() {
    - Kleine AST-Generatoren fuer bereits unterstuetzte Syntax bauen statt rein zufaelliger Bytes.
    - Gueltige Programme mutieren: Operator austauschen, Literalbasis wechseln, Namen duplizieren, Semikolons entfernen, `::`/`.` vertauschen.
    - Jeden Crash oder unerwarteten Erfolg automatisch reduzieren: erst Statements entfernen, dann Ausdruecke verkleinern, dann Literale/Namen minimieren.
-
