@@ -1,0 +1,16 @@
+struct S {
+    x: int,
+
+    // Bug: parser accepts this in the second parameter position.
+    fn bad(x: int, this) int {
+        return x;
+    }
+}
+
+fn main() int {
+    let s: S = S { x: 0 };
+
+    // Bug: method-call codegen always passes this as argument 0.
+    // Current codegen reports MismatchedTypes(I64, Pointer(Named("S"))).
+    return s.bad(1);
+}

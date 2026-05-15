@@ -1,0 +1,13 @@
+struct Point {
+    x: int
+}
+
+fn make() Point {
+    return Point { x: 41 };
+}
+
+fn main() int {
+    // Bug: parser accepts field access on any expression, but codegen only
+    // handles lvalue bases. Both sides should work but currently fail.
+    return make().x + Point { x: 1 }.x;
+}

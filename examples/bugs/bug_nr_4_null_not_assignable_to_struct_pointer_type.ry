@@ -1,0 +1,9 @@
+struct Node {
+    value: int
+}
+
+fn main() {
+    // Bug: structs are represented as pointers, but null has Pointer(Void).
+    // Current codegen reports MismatchedTypes(Pointer(Named("Node")), Pointer(Void)).
+    let n: Node = null;
+}

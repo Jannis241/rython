@@ -1,0 +1,5 @@
+fn main() {
+    // Bug: invalid tokenizable input should return a ParseError.
+    // Current parser reaches unimplemented!() in parse_postfix and panics.
+    a::;
+}

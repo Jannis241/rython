@@ -1,0 +1,7 @@
+const ten: int = 0b1010;
+
+fn main() int {
+    // Bug: lexer accepts 0x/0b/0o, but codegen parses them as decimal.
+    // Current codegen reports InvalidIntLiteral("0x10") or fails on the const.
+    return 0x10 + 0o7 + ten;
+}

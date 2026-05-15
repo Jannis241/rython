@@ -1,0 +1,6 @@
+fn main() {
+    // Bug: run with --emit-tokens. The char token contains Unicode, and later
+    // token slices shift because lexer spans mix char positions and byte lengths.
+    let c: char = 'ä';
+    let s: string = "Grüße";
+}
