@@ -187,7 +187,6 @@ pub enum PrimitiveValue {
     Bool(bool),
     Char(char),
     Pointer(TempId),
-    Null,
 }
 
 #[derive(Debug, Clone)]
@@ -210,7 +209,6 @@ pub enum IrType {
     Void,
     F64,
     Char,
-    Null,
     Named(String),
     Pointer(Box<IrType>),
 }

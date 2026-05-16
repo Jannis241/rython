@@ -8,6 +8,15 @@ use super::generator::IrGenerator;
 
 impl IrGenerator {
     pub(super) fn gen_let(&mut self, l: &Let) -> Result<(), CodegenError> {
+        if let Some(global) = self
+            .module
+            .globals
+            .iter()
+            .find(|g| g.name == *l.var_name)
+            .cloned()
+        {
+            return Err(CodegenError::ConflictingVariables(l.var_name.to_string()));
+        }
         let ir_type = self.convert_to_ir_type(&l.var_type.clone())?;
 
         let id_for_alloc = self.next_temp_id();

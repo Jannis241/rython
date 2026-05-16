@@ -23,7 +23,6 @@ impl IrGenerator {
                 binary_op,
                 rhs,
             } => self.gen_binary_op(lhs, binary_op, rhs),
-            Expr::NullLiteral => self.gen_null_literal(),
             Expr::CharLiteral(character) => self.gen_charliteral(*character),
             Expr::ListLiteral(inner) => self.gen_list_literal(inner),
             Expr::Call {
@@ -1094,21 +1093,5 @@ impl IrGenerator {
             .add_instruction_to_current_block(new_const_instruction)?;
 
         Ok((temp_id, IrType::Bool))
-    }
-
-    fn gen_null_literal(&mut self) -> Result<(TempId, IrType), CodegenError> {
-        let temp_id = self.next_temp_id();
-        let ty = IrType::Pointer(Box::new(IrType::Void));
-
-        let new_const_instruction = IrInstruction::PrimitiveConst {
-            temp_id,
-            ty: ty.clone(),
-            value: PrimitiveValue::Null,
-        };
-
-        self.block_handler
-            .add_instruction_to_current_block(new_const_instruction)?;
-
-        Ok((temp_id, ty))
     }
 }

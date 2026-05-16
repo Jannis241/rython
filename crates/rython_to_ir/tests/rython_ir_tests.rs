@@ -1,11 +1,14 @@
-#[path = "rython_ir_tests/ry_ir_lexer_tests.rs"]
-mod ry_ir_lexer_tests;
+#[path = "rython_ir_tests/common.rs"]
+mod common;
 
-#[path = "rython_ir_tests/ry_ir_parser_tests.rs"]
-mod ry_ir_parser_tests;
+#[path = "rython_ir_tests/lexer_semantics_tests.rs"]
+mod lexer_semantics_tests;
 
-#[path = "rython_ir_tests/ry_ir_codegen_tests.rs"]
-mod ry_ir_codegen_tests;
+#[path = "rython_ir_tests/parser_ast_semantics_tests.rs"]
+mod parser_ast_semantics_tests;
 
-#[path = "rython_ir_tests/ry_ir_pipeline_tests.rs"]
-mod ry_ir_pipeline_tests;
+#[path = "rython_ir_tests/ir_codegen_semantics_tests.rs"]
+mod ir_codegen_semantics_tests;
+
+#[path = "rython_ir_tests/pipeline_regression_tests.rs"]
+mod pipeline_regression_tests;

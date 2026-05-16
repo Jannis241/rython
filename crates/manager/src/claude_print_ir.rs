@@ -333,7 +333,6 @@ fn format_type(ty: &IrType) -> String {
         IrType::Char => "Char".to_string(),
         IrType::Named(name) => format!("Named({:?})", name),
         IrType::Pointer(inner) => format!("Pointer({})", format_type(inner)),
-        IrType::Null => "Null".to_string(),
     }
 }
 
@@ -344,7 +343,6 @@ fn format_primitive(value: &PrimitiveValue) -> String {
         PrimitiveValue::Bool(v) => format!("Bool({})", v),
         PrimitiveValue::Char(v) => format!("Char({:?})", v),
         PrimitiveValue::Pointer(id) => format!("Pointer({})", t(id)),
-        PrimitiveValue::Null => "Null".to_string(),
     }
 }
 

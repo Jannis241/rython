@@ -439,10 +439,6 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::BoolLiteral(false))
             }
-            TokenKind::Null => {
-                self.advance()?;
-                Ok(Expr::NullLiteral)
-            }
             TokenKind::Char => {
                 let char_token_idx = self.current_idx;
                 self.advance()?;

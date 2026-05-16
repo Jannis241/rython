@@ -9,7 +9,6 @@ pub enum TokenKind {
     Float,
     StringLiteral,
     Char,
-    Null,
 
     If,
     Else,
@@ -268,12 +267,7 @@ impl Lexer {
     fn handle_pipe(&mut self) -> Token {
         if self.peek() == Some('|') {
             self.advance();
-            Token::new(
-                TokenKind::PipePipe,
-                "||".to_string(),
-                self.current_idx,
-                -2,
-            )
+            Token::new(TokenKind::PipePipe, "||".to_string(), self.current_idx, -2)
         } else {
             Token::new(TokenKind::Pipe, "|".to_string(), self.current_idx, -1)
         }
@@ -393,14 +387,14 @@ impl Lexer {
     fn handle_idents(&mut self) -> Result<Token, LexingError> {
         let mut ident = String::new();
         ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
-                                                // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
+        // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
 
         while self
             .peek()
             .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             ident.push(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
-                                              // ob self.peek Some ist
+            // ob self.peek Some ist
             self.advance();
         }
 
@@ -412,7 +406,6 @@ impl Lexer {
             "true" => Token::new(TokenKind::True, ident2, ci, -(ident.len() as i32)),
             "false" => Token::new(TokenKind::False, ident2, ci, -(ident.len() as i32)),
             "char" => Token::new(TokenKind::Char, ident2, ci, -(ident.len() as i32)),
-            "null" => Token::new(TokenKind::Null, ident2, ci, -(ident.len() as i32)),
             "if" => Token::new(TokenKind::If, ident2, ci, -(ident.len() as i32)),
             "else" => Token::new(TokenKind::Else, ident2, ci, -(ident.len() as i32)),
             "return" => Token::new(TokenKind::Return, ident2, ci, -(ident.len() as i32)),
@@ -712,12 +705,7 @@ impl Lexer {
                         ));
                     }
                     let len = value.len() as i32;
-                    return Ok(Token::new(
-                        TokenKind::Int,
-                        value,
-                        self.current_idx,
-                        -len,
-                    ));
+                    return Ok(Token::new(TokenKind::Int, value, self.current_idx, -len));
                 }
             }
         }

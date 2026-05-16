@@ -650,7 +650,6 @@ impl IrGenerator {
             }
             Expr::BoolLiteral(b) => Ok((IrType::Bool, PrimitiveValue::Bool(*b))),
             Expr::CharLiteral(c) => Ok((IrType::Char, PrimitiveValue::Char(*c))),
-            Expr::NullLiteral => Ok((IrType::Null, PrimitiveValue::Null)),
             //Todo andere exprs machen die auch in ein const/ global gespeichert werden können
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }

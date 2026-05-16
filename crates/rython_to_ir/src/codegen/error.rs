@@ -7,7 +7,8 @@ pub enum CodegenError {
     MismatchedTypes(IrType, IrType), // expected type, got
 
     WrongArgumentCount(String, usize, usize), // Func name, expected args, got
-    //
+    ConflictingVariables(String), // Wenn man zb ein global und const mit dem selben namen hat oder
+    // eine lokale variable mit dem selben namen einer global oder const hat.
     DuplicateType(String),
     DuplicateFunction(String),
 
