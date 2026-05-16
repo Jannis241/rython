@@ -15,9 +15,11 @@ fn first_function(source: &str) -> Function {
 fn single_return_expr(source: &str) -> Expr {
     let function = first_function(source);
     match function.body.statements.as_slice() {
-        [Stmt::Return(Return {
-            return_value: Some(expr),
-        })] => expr.clone(),
+        [
+            Stmt::Return(Return {
+                return_value: Some(expr),
+            }),
+        ] => expr.clone(),
         other => panic!("expected single return expr, got {other:#?}"),
     }
 }
@@ -92,7 +94,30 @@ fn parses_grouping_calls_fields_index_and_postfix_chains() {
                 value,
             } => {
                 assert!(matches!(*index, Expr::IntLiteral(ref value) if value == "0"));
-                assert!(matches!(*value, Expr::Call { .. }));
+                match *value {
+                    Expr::Call {
+                        callee,
+                        arguments,
+                        type_args,
+                    } => {
+                        assert!(type_args.is_empty());
+                        assert_eq!(arguments.len(), 2);
+                        assert!(
+                            matches!(arguments[0], Expr::IntLiteral(ref value) if value == "1")
+                        );
+                        assert!(
+                            matches!(arguments[1], Expr::IntLiteral(ref value) if value == "2")
+                        );
+                        match *callee {
+                            Expr::FieldAccess { object, field_name } => {
+                                assert_eq!(field_name, "field");
+                                assert!(matches!(*object, Expr::Grouping(_)));
+                            }
+                            other => panic!("expected field access callee, got {other:#?}"),
+                        }
+                    }
+                    other => panic!("expected call before index, got {other:#?}"),
+                }
             }
             other => panic!("expected index before ++, got {other:#?}"),
         },
@@ -250,6 +275,79 @@ fn parses_variant_literal_with_double_colon() {
 }
 
 #[test]
+fn parses_struct_literal_field_names_and_values_in_source_order() {
+    let expr = single_return_expr(
+        r#"
+        fn main() Point {
+            return Point { x: 1, y: 2 + 3 };
+        }
+        "#,
+    );
+
+    match expr {
+        Expr::StructLiteral {
+            struct_name,
+            arguments,
+        } => {
+            assert_eq!(struct_name, "Point");
+            assert_eq!(arguments.len(), 2);
+            assert_eq!(arguments[0].0, "x");
+            assert!(matches!(arguments[0].1, Expr::IntLiteral(ref value) if value == "1"));
+            assert_eq!(arguments[1].0, "y");
+            assert!(matches!(
+                arguments[1].1,
+                Expr::BinaryOp {
+                    binary_op: BinaryOp::Add,
+                    ..
+                }
+            ));
+        }
+        other => panic!("expected struct literal, got {other:#?}"),
+    }
+}
+
+#[test]
+fn parses_grouping_as_distinct_from_struct_literal_in_control_flow_conditions() {
+    let function = first_function(
+        r#"
+        fn main(flag: bool) int {
+            if (flag) { return 1; }
+            return 0;
+        }
+        "#,
+    );
+
+    match &function.body.statements[0] {
+        Stmt::If(if_stmt) => {
+            assert!(matches!(if_stmt.condition, Expr::Grouping(_)));
+            assert_eq!(if_stmt.if_code.statements.len(), 1);
+        }
+        other => panic!("expected if statement, got {other:#?}"),
+    }
+}
+
+#[test]
+fn method_without_this_parses_as_static_method_with_no_implicit_receiver_param() {
+    let items = parse_items(
+        r#"
+        struct S {
+            fn static_value() int { return 1; }
+        }
+        "#,
+    )
+    .expect("parse failed");
+
+    match &items[0] {
+        Item::Struct(struct_item) => {
+            assert_eq!(struct_item.functions.len(), 1);
+            assert_eq!(struct_item.functions[0].name, "static_value");
+            assert!(struct_item.functions[0].params.is_empty());
+        }
+        other => panic!("expected struct, got {other:#?}"),
+    }
+}
+
+#[test]
 fn malformed_double_colon_syntax_returns_parse_error_without_panic() {
     let result = parse_items_no_panic("fn main() { a::; }");
 
@@ -257,6 +355,37 @@ fn malformed_double_colon_syntax_returns_parse_error_without_panic() {
         Ok(Err(_)) => {}
         Ok(Ok(items)) => panic!("expected parse error, got {items:#?}"),
         Err(_) => panic!("parser panicked on malformed :: syntax"),
+    }
+}
+
+#[test]
+fn malformed_parser_inputs_return_errors_instead_of_panicking() {
+    let malformed_sources = [
+        "fn main() { ::; }",
+        "fn main() { a::; }",
+        "fn broken<T {}",
+        "fn main( { return; }",
+        "fn main() { foo(1,); }",
+        "fn main() { { let x: int = 1; }",
+        "fn main() int { return;",
+        "fn main() { Point { x: 1, }; }",
+        "fn operator add() {}",
+        "fn main() int { return 1 + ; }",
+        "fn main() { if true }",
+        "fn main() { if true { } else }",
+        "fn main() { while true }",
+        "fn main(value int) {}",
+        "import std.;",
+        "trait T { fn ; }",
+        "impl T for { }",
+    ];
+
+    for source in malformed_sources {
+        match parse_items_no_panic(source) {
+            Ok(Err(_)) => {}
+            Ok(Ok(items)) => panic!("expected parse error for {source:?}, got {items:#?}"),
+            Err(_) => panic!("parser panicked for malformed source {source:?}"),
+        }
     }
 }
 

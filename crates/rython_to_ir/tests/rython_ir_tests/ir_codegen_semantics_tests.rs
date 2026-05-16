@@ -1,22 +1,22 @@
 use rython_to_ir::codegen::{
-    CodegenError, IrBinaryOp, IrInstruction, IrType, PrimitiveValue, Terminator,
+    CodegenError, IrBinaryOp, IrInstruction, IrType, PrimitiveValue, TempId, Terminator,
 };
 use rython_to_ir::ir::IrTypeDefinition;
 
 use super::common::{
     all_instructions, assert_all_blocks_terminated, assert_branches_target_existing_blocks,
-    compile_err, compile_ok, function,
+    compile_err, compile_no_panic, compile_verified, function,
 };
 
 #[test]
 fn empty_program_and_void_function_generate_valid_empty_ir_shapes() {
-    let module = compile_ok("");
+    let module = compile_verified("");
     assert!(module.functions.is_empty());
     assert!(module.globals.is_empty());
     assert!(module.constants.is_empty());
     assert!(module.types.is_empty());
 
-    let module = compile_ok("fn noop() {}");
+    let module = compile_verified("fn noop() {}");
     let noop = function(&module, "noop");
     assert_eq!(noop.return_type, IrType::Void);
     assert_eq!(noop.blocks.len(), 1);
@@ -25,7 +25,7 @@ fn empty_program_and_void_function_generate_valid_empty_ir_shapes() {
 
 #[test]
 fn primitive_returns_generate_typed_constants_and_return_them() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         fn int_value() int { return 42; }
         fn float_value() float { return 1.5; }
@@ -69,8 +69,159 @@ fn primitive_returns_generate_typed_constants_and_return_them() {
 }
 
 #[test]
+fn exact_ir_for_return_expression_preserves_operand_order_and_return_value() {
+    let module = compile_verified("fn main() int { return 1 + 2 * 3; }");
+    let main = function(&module, "main");
+    let entry = &main.blocks[0];
+
+    assert_eq!(entry.instructions.len(), 5);
+    assert!(matches!(
+        entry.instructions[0],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(0),
+            ty: IrType::I64,
+            value: PrimitiveValue::Int(1),
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[1],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(1),
+            ty: IrType::I64,
+            value: PrimitiveValue::Int(2),
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[2],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(2),
+            ty: IrType::I64,
+            value: PrimitiveValue::Int(3),
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[3],
+        IrInstruction::Binary {
+            temp_id: TempId(3),
+            op: IrBinaryOp::Mul,
+            lhs: TempId(1),
+            rhs: TempId(2),
+            ty_lr: IrType::I64,
+            ty_res: IrType::I64,
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[4],
+        IrInstruction::Binary {
+            temp_id: TempId(4),
+            op: IrBinaryOp::Add,
+            lhs: TempId(0),
+            rhs: TempId(3),
+            ty_lr: IrType::I64,
+            ty_res: IrType::I64,
+        }
+    ));
+    assert!(matches!(entry.terminator, Terminator::Ret(Some(TempId(4)))));
+}
+
+#[test]
+fn exact_ir_for_local_declaration_load_and_return_uses_the_allocated_slot() {
+    let module = compile_verified("fn main() int { let x: int = 41; return x; }");
+    let entry = &function(&module, "main").blocks[0];
+
+    assert_eq!(entry.instructions.len(), 4);
+    assert!(matches!(
+        entry.instructions[0],
+        IrInstruction::Alloca {
+            temp_id: TempId(0),
+            ty: IrType::I64,
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[1],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(1),
+            ty: IrType::I64,
+            value: PrimitiveValue::Int(41),
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[2],
+        IrInstruction::Store {
+            ty: IrType::I64,
+            value: TempId(1),
+            addr: TempId(0),
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[3],
+        IrInstruction::Load {
+            temp_id: TempId(2),
+            ty: IrType::I64,
+            addr: TempId(0),
+        }
+    ));
+    assert!(matches!(entry.terminator, Terminator::Ret(Some(TempId(2)))));
+}
+
+#[test]
+fn exact_ir_for_assignment_stores_new_value_before_the_final_load() {
+    let module = compile_verified(
+        r#"
+        fn main() int {
+            let x: int = 1;
+            x = 2;
+            return x;
+        }
+        "#,
+    );
+    let entry = &function(&module, "main").blocks[0];
+
+    assert!(matches!(
+        entry.instructions[0],
+        IrInstruction::Alloca {
+            temp_id: TempId(0),
+            ty: IrType::I64,
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[2],
+        IrInstruction::Store {
+            value: TempId(1),
+            addr: TempId(0),
+            ..
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[3],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(2),
+            value: PrimitiveValue::Int(2),
+            ..
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[4],
+        IrInstruction::Store {
+            ty: IrType::I64,
+            value: TempId(2),
+            addr: TempId(0),
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[5],
+        IrInstruction::Load {
+            temp_id: TempId(3),
+            ty: IrType::I64,
+            addr: TempId(0),
+        }
+    ));
+    assert!(matches!(entry.terminator, Terminator::Ret(Some(TempId(3)))));
+}
+
+#[test]
 fn arithmetic_comparison_logic_and_bitwise_expressions_generate_typed_binary_ir() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         fn main(a: int, b: int) int {
             let value: int = a + b * 2 - 1;
@@ -111,7 +262,7 @@ fn arithmetic_comparison_logic_and_bitwise_expressions_generate_typed_binary_ir(
 
 #[test]
 fn globals_and_constants_are_materialized_and_readable_from_functions() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         global bonus: int = 7;
         const max_score: int = 100;
@@ -133,34 +284,112 @@ fn globals_and_constants_are_materialized_and_readable_from_functions() {
 }
 
 #[test]
-fn local_shadowing_of_params_globals_and_consts_is_rejected() {
+fn local_shadowing_of_global_const_reads_the_local_binding() {
+    let module = compile_verified("const x: int = 1; fn main() int { let x: int = 2; return x; }");
+    let entry = &function(&module, "main").blocks[0];
+
+    assert!(entry.instructions.iter().any(|instruction| matches!(
+        instruction,
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(1),
+            value: PrimitiveValue::Int(2),
+            ..
+        }
+    )));
     assert!(matches!(
-        compile_err("const x: int = 1; fn main() int { let x: int = 2; return x; }"),
-        CodegenError::DuplicateGlobal(_) | CodegenError::AmbigousVariable(_) | CodegenError::InvalidItem(_)
+        entry.instructions.last(),
+        Some(IrInstruction::Load {
+            temp_id: TempId(2),
+            addr: TempId(0),
+            ..
+        })
     ));
-    assert!(matches!(
-        compile_err("global x: int = 1; fn main() int { let x: int = 2; return x; }"),
-        CodegenError::DuplicateGlobal(_) | CodegenError::AmbigousVariable(_) | CodegenError::InvalidItem(_)
-    ));
-    let _ = compile_err("fn main(x: int) int { let x: int = 2; return x; }");
+    assert!(matches!(entry.terminator, Terminator::Ret(Some(TempId(2)))));
 }
 
 #[test]
-fn duplicate_local_names_in_the_same_scope_are_rejected() {
-    let _ = compile_err(
+fn inner_block_shadowing_is_allowed_and_outer_binding_is_restored_after_block() {
+    let module = compile_verified(
         r#"
         fn main() int {
             let x: int = 1;
-            let x: int = 2;
+            {
+                let x: int = 2;
+            }
             return x;
         }
         "#,
     );
+    let entry = &function(&module, "main").blocks[0];
+
+    assert!(matches!(
+        entry.instructions.last(),
+        Some(IrInstruction::Load {
+            addr: TempId(0),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn inner_block_shadowing_of_parameter_resolves_to_inner_binding_inside_block() {
+    let module = compile_verified(
+        r#"
+        fn main(x: int) int {
+            {
+                let x: int = 2;
+                return x;
+            }
+        }
+        "#,
+    );
+    let entry = &function(&module, "main").blocks[0];
+
+    assert!(entry.instructions.iter().any(|instruction| matches!(
+        instruction,
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(3),
+            value: PrimitiveValue::Int(2),
+            ..
+        }
+    )));
+    assert!(matches!(entry.terminator, Terminator::Ret(Some(TempId(4)))));
+}
+
+#[test]
+fn same_local_names_in_different_functions_are_independent() {
+    let module = compile_verified(
+        r#"
+        fn one() int { let x: int = 1; return x; }
+        fn two() int { let x: int = 2; return x; }
+        "#,
+    );
+
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "one")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "two")
+    );
+}
+
+#[test]
+fn variable_from_inner_scope_is_not_visible_after_the_block() {
+    assert!(matches!(
+        compile_err("fn main() int { { let x: int = 1; } return x; }"),
+        CodegenError::UnknownVariable(name) if name == "x"
+    ));
 }
 
 #[test]
 fn function_calls_check_argument_count_and_argument_types() {
-    let ok = compile_ok(
+    let ok = compile_verified(
         r#"
         fn add(x: int, y: int) int { return x + y; }
         fn main() int { return add(1, 2); }
@@ -173,18 +402,22 @@ fn function_calls_check_argument_count_and_argument_types() {
     )));
 
     assert!(matches!(
-        compile_err("fn add(x: int, y: int) int { return x + y; } fn main() int { return add(1); }"),
+        compile_err(
+            "fn add(x: int, y: int) int { return x + y; } fn main() int { return add(1); }"
+        ),
         CodegenError::WrongArgumentCount(_, 2, 1)
     ));
     assert!(matches!(
-        compile_err("fn add(x: int, y: int) int { return x + y; } fn main() int { return add(1, true); }"),
+        compile_err(
+            "fn add(x: int, y: int) int { return x + y; } fn main() int { return add(1, true); }"
+        ),
         CodegenError::MismatchedTypes(IrType::I64, IrType::Bool)
     ));
 }
 
 #[test]
 fn struct_definitions_literals_fields_methods_and_assignments_generate_consistent_ir() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         struct Point {
             x: int,
@@ -208,7 +441,12 @@ fn struct_definitions_literals_fields_methods_and_assignments_generate_consisten
         IrTypeDefinition::Struct { name, fields }
             if name == "Point" && fields.len() == 2 && fields[0].name == "x" && fields[1].name == "y"
     )));
-    assert!(module.functions.iter().any(|function| function.name == "Point_move_by"));
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Point_move_by")
+    );
     assert!(all_instructions(&module).iter().any(|instruction| matches!(
         instruction,
         IrInstruction::GetFieldAddr { field_name, .. } if field_name == "x"
@@ -221,7 +459,7 @@ fn struct_definitions_literals_fields_methods_and_assignments_generate_consisten
 
 #[test]
 fn field_access_on_struct_rvalues_and_call_results_is_valid() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         struct Point { x: int }
         fn make() Point { return Point { x: 41 }; }
@@ -229,15 +467,21 @@ fn field_access_on_struct_rvalues_and_call_results_is_valid() {
         "#,
     );
 
-    assert!(all_instructions(&module).iter().filter(|instruction| matches!(
-        instruction,
-        IrInstruction::GetFieldAddr { field_name, .. } if field_name == "x"
-    )).count() >= 2);
+    assert!(
+        all_instructions(&module)
+            .iter()
+            .filter(|instruction| matches!(
+                instruction,
+                IrInstruction::GetFieldAddr { field_name, .. } if field_name == "x"
+            ))
+            .count()
+            >= 2
+    );
 }
 
 #[test]
 fn variants_generate_type_definitions_and_init_variant_instructions() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         variant Status { Active, Done }
         fn main() Status { return Status::Done; }
@@ -257,7 +501,7 @@ fn variants_generate_type_definitions_and_init_variant_instructions() {
 
 #[test]
 fn operator_overloads_check_argument_types_like_normal_calls() {
-    let ok = compile_ok(
+    let ok = compile_verified(
         r#"
         struct Box {
             value: int,
@@ -293,7 +537,7 @@ fn operator_overloads_check_argument_types_like_normal_calls() {
 
 #[test]
 fn index_operator_overloads_check_index_argument_types() {
-    let ok = compile_ok(
+    let ok = compile_verified(
         r#"
         struct Box {
             value: int,
@@ -330,7 +574,7 @@ fn index_operator_overloads_check_index_argument_types() {
 
 #[test]
 fn inline_asm_substitutes_known_variables_and_rejects_unknown_variables() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         fn main() int {
             let value: int = 42;
@@ -353,7 +597,7 @@ fn inline_asm_substitutes_known_variables_and_rejects_unknown_variables() {
 
 #[test]
 fn prefixed_integer_literals_work_in_globals_consts_and_expressions() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         const ten: int = 0b1010;
         global mask: int = 0xFF;
@@ -365,13 +609,16 @@ fn prefixed_integer_literals_work_in_globals_consts_and_expressions() {
     assert!(matches!(module.globals[0].value, PrimitiveValue::Int(255)));
     assert!(all_instructions(&module).iter().any(|instruction| matches!(
         instruction,
-        IrInstruction::PrimitiveConst { value: PrimitiveValue::Int(7), .. }
+        IrInstruction::PrimitiveConst {
+            value: PrimitiveValue::Int(7),
+            ..
+        }
     )));
 }
 
 #[test]
 fn control_flow_generates_terminated_blocks_with_existing_targets() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         fn main(limit: int) int {
             let i: int = 0;
@@ -394,8 +641,237 @@ fn control_flow_generates_terminated_blocks_with_existing_targets() {
 
 #[test]
 fn loop_with_unconditional_return_is_valid_in_non_void_function() {
-    let module = compile_ok("fn main() int { loop { return 1; } }");
+    let module = compile_verified("fn main() int { loop { return 1; } }");
     assert_all_blocks_terminated(&module);
+}
+
+#[test]
+fn if_else_codegen_connects_branch_targets_to_returning_blocks() {
+    let module = compile_verified(
+        r#"
+        fn main(flag: bool) int {
+            if flag { return 1; } else { return 2; }
+        }
+        "#,
+    );
+    let main = function(&module, "main");
+    let entry = &main.blocks[0];
+
+    assert!(matches!(
+        entry.terminator,
+        Terminator::Branch {
+            condition: TempId(2),
+            ref then_block,
+            ref else_block,
+        } if then_block == "if_then_0" && else_block == "if_else_2"
+    ));
+    assert!(main.blocks.iter().any(|block| {
+        block.label == "if_then_0:"
+            && matches!(block.terminator, Terminator::Ret(Some(_)))
+            && block.instructions.iter().any(|instruction| {
+                matches!(
+                    instruction,
+                    IrInstruction::PrimitiveConst {
+                        value: PrimitiveValue::Int(1),
+                        ..
+                    }
+                )
+            })
+    }));
+    assert!(main.blocks.iter().any(|block| {
+        block.label == "if_else_2:"
+            && matches!(block.terminator, Terminator::Ret(Some(_)))
+            && block.instructions.iter().any(|instruction| {
+                matches!(
+                    instruction,
+                    IrInstruction::PrimitiveConst {
+                        value: PrimitiveValue::Int(2),
+                        ..
+                    }
+                )
+            })
+    }));
+}
+
+#[test]
+fn while_codegen_branches_from_condition_to_body_and_end_then_body_jumps_back() {
+    let module = compile_verified(
+        r#"
+        fn main(limit: int) int {
+            let i: int = 0;
+            while i < limit {
+                i += 1;
+            }
+            return i;
+        }
+        "#,
+    );
+    let main = function(&module, "main");
+
+    assert!(matches!(
+        main.blocks[0].terminator,
+        Terminator::Jump { ref target } if target == "while_cond_0"
+    ));
+    let cond = main
+        .blocks
+        .iter()
+        .find(|block| block.label == "while_cond_0:")
+        .expect("missing while condition block");
+    assert!(matches!(
+        cond.terminator,
+        Terminator::Branch {
+            ref then_block,
+            ref else_block,
+            ..
+        } if then_block == "while_body_1" && else_block == "while_end_2"
+    ));
+    let body = main
+        .blocks
+        .iter()
+        .find(|block| block.label == "while_body_1:")
+        .expect("missing while body block");
+    assert!(matches!(
+        body.terminator,
+        Terminator::Jump { ref target } if target == "while_cond_0"
+    ));
+    let end = main
+        .blocks
+        .iter()
+        .find(|block| block.label == "while_end_2:")
+        .expect("missing while end block");
+    assert!(matches!(end.terminator, Terminator::Ret(Some(_))));
+}
+
+#[test]
+fn normal_function_call_passes_arguments_in_source_order_and_returns_call_temp() {
+    let module = compile_verified(
+        r#"
+        fn sub(left: int, right: int) int { return left - right; }
+        fn main() int { return sub(10, 3); }
+        "#,
+    );
+    let entry = &function(&module, "main").blocks[0];
+
+    assert!(matches!(
+        entry.instructions[0],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(0),
+            value: PrimitiveValue::Int(10),
+            ..
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[1],
+        IrInstruction::PrimitiveConst {
+            temp_id: TempId(1),
+            value: PrimitiveValue::Int(3),
+            ..
+        }
+    ));
+    assert!(matches!(
+        entry.instructions[2],
+        IrInstruction::Call {
+            temp_id: TempId(2),
+            ref function_name,
+            ref args,
+            return_type: IrType::I64,
+        } if function_name == "sub" && args.iter().map(|arg| arg.0).collect::<Vec<_>>() == vec![0, 1]
+    ));
+    assert!(matches!(entry.terminator, Terminator::Ret(Some(TempId(2)))));
+}
+
+#[test]
+fn method_without_this_is_static_and_is_not_an_instance_method() {
+    let module = compile_verified(
+        r#"
+        struct S {
+            fn static_value() int { return 7; }
+        }
+        "#,
+    );
+
+    let static_fn = function(&module, "S_static_value");
+    assert!(static_fn.parameter.is_empty());
+
+    assert!(matches!(
+        compile_err(
+            r#"
+            struct S {
+                value: int,
+                fn static_value() int { return 7; }
+            }
+            fn main() int {
+                let s: S = S { value: 1 };
+                return s.static_value();
+            }
+            "#
+        ),
+        CodegenError::WrongArgumentCount(name, 0, 1) if name == "S_static_value"
+    ));
+}
+
+#[test]
+fn short_circuit_and_is_lowered_to_control_flow_not_eager_binary_and() {
+    let module = compile_verified(
+        r#"
+        fn rhs() bool { return true; }
+        fn main(left: bool) bool { return left and rhs(); }
+        "#,
+    );
+    let main = function(&module, "main");
+
+    assert!(
+        main.blocks
+            .iter()
+            .any(|block| matches!(block.terminator, Terminator::Branch { .. })),
+        "`and` must branch so the right hand side can be skipped"
+    );
+    assert!(
+        !main
+            .blocks
+            .iter()
+            .flat_map(|block| block.instructions.iter())
+            .any(|instruction| matches!(
+                instruction,
+                IrInstruction::Binary {
+                    op: IrBinaryOp::And,
+                    ..
+                }
+            )),
+        "`and` must not be lowered to an eager binary op"
+    );
+}
+
+#[test]
+fn short_circuit_or_is_lowered_to_control_flow_not_eager_binary_or() {
+    let module = compile_verified(
+        r#"
+        fn rhs() bool { return false; }
+        fn main(left: bool) bool { return left or rhs(); }
+        "#,
+    );
+    let main = function(&module, "main");
+
+    assert!(
+        main.blocks
+            .iter()
+            .any(|block| matches!(block.terminator, Terminator::Branch { .. })),
+        "`or` must branch so the right hand side can be skipped"
+    );
+    assert!(
+        !main
+            .blocks
+            .iter()
+            .flat_map(|block| block.instructions.iter())
+            .any(|instruction| matches!(
+                instruction,
+                IrInstruction::Binary {
+                    op: IrBinaryOp::Or,
+                    ..
+                }
+            )),
+        "`or` must not be lowered to an eager binary op"
+    );
 }
 
 #[test]
@@ -416,4 +892,73 @@ fn invalid_statements_and_type_errors_are_reported_as_codegen_errors() {
         compile_err("fn main() { continue; }"),
         CodegenError::ContinueOutsideLoop
     ));
+}
+
+#[test]
+fn negative_codegen_reports_specific_name_type_and_struct_literal_errors() {
+    assert!(matches!(
+        compile_err("fn main() Missing { return 0; }"),
+        CodegenError::UnknownType(name) if name == "Missing"
+    ));
+    assert!(matches!(
+        compile_err("fn main() int { return missing(); }"),
+        CodegenError::UnknownFunction(name) if name == "missing"
+    ));
+    assert!(matches!(
+        compile_err("struct Point { x: int } fn main() int { let p: Point = Point { x: 1 }; return p.y; }"),
+        CodegenError::UnknownField(name) if name == "y"
+    ));
+    assert!(matches!(
+        compile_err("fn same() {} fn same() {}"),
+        CodegenError::DuplicateFunction(name) if name == "same"
+    ));
+    assert!(matches!(
+        compile_err("struct T { x: int } variant T { A }"),
+        CodegenError::DuplicateType(name) if name == "T"
+    ));
+    assert!(matches!(
+        compile_err("struct Point { x: int, y: int } fn main() { let p: Point = Point { x: 1 }; }"),
+        CodegenError::FieldsDontMatch
+    ));
+    assert!(matches!(
+        compile_err("struct Point { x: int } fn main() { let p: Point = Point { x: 1, y: 2 }; }"),
+        CodegenError::FieldsDontMatch
+    ));
+    assert!(matches!(
+        compile_err("struct Point { x: int } fn main() { let p: Point = Point { x: 1, x: 2 }; }"),
+        CodegenError::FieldsDontMatch
+    ));
+    assert!(matches!(
+        compile_err("const x: int = 1; fn main() { x = 2; }"),
+        CodegenError::AssignToConst(name) if name == "x"
+    ));
+    assert!(matches!(
+        compile_err("fn main() int { let x: int = 1; }"),
+        CodegenError::MissingTerminator(_)
+    ));
+    assert!(matches!(
+        compile_err("fn main() int { return null; }"),
+        CodegenError::UnknownVariable(name) if name == "null"
+    ));
+}
+
+#[test]
+fn unsupported_parser_only_features_fail_cleanly_during_ir_codegen() {
+    for source in [
+        "import std.io;",
+        "trait Display { fn show() int; }",
+        "impl Display for Box { fn show() int { return 1; } }",
+        "fn main<T>(value: T) T { return value; }",
+        "fn main(value: any Display) {}",
+        "fn operator + add(left: int, right: int) int { return left + right; }",
+        "fn main() { for item in [1, 2, 3] { } }",
+    ] {
+        match compile_no_panic(source) {
+            Ok(Ok(module)) => panic!("expected unsupported feature to fail, got {module:#?}"),
+            Ok(Err(_)) => {}
+            Err(_) => {
+                panic!("unsupported feature panicked instead of returning CodegenError: {source}")
+            }
+        }
+    }
 }

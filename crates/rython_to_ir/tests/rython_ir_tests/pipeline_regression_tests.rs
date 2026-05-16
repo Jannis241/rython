@@ -3,15 +3,26 @@ use rython_to_ir::lexer::TokenKind;
 
 use super::common::{
     all_instructions, assert_all_blocks_terminated, assert_branches_target_existing_blocks,
-    assert_no_duplicate_names, compile, compile_err, compile_ok, parse_items, token_pairs,
+    assert_no_duplicate_names, assert_valid_ir, compile, compile_err, compile_verified,
+    parse_items, token_pairs,
 };
 
 #[test]
 fn current_features_example_compiles_through_ir_without_backend_assumptions() {
-    let module = compile_ok(include_str!("../../../../examples/current_features.ry"));
+    let module = compile_verified(include_str!("../../../../examples/current_features.ry"));
 
-    assert!(module.functions.iter().any(|function| function.name == "main"));
-    assert!(module.functions.iter().any(|function| function.name == "Vec2_add"));
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "main")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "Vec2_add")
+    );
     assert!(module.types.iter().any(|ty| matches!(
         ty,
         rython_to_ir::ir::IrTypeDefinition::Struct { name, .. } if name == "Vec2"
@@ -41,15 +52,26 @@ fn lexer_parser_codegen_pipeline_preserves_global_const_and_function_names() {
     assert_eq!(items.len(), 4);
 
     let module = compile(source).expect("compile failed");
+    assert_valid_ir(&module);
     assert_eq!(module.constants[0].name, "max");
     assert_eq!(module.globals[0].name, "bonus");
-    assert!(module.functions.iter().any(|function| function.name == "add"));
-    assert!(module.functions.iter().any(|function| function.name == "main"));
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "add")
+    );
+    assert!(
+        module
+            .functions
+            .iter()
+            .any(|function| function.name == "main")
+    );
 }
 
 #[test]
 fn generated_ir_has_no_duplicate_public_names_for_supported_success_programs() {
-    let module = compile_ok(
+    let module = compile_verified(
         r#"
         variant Status { Active, Done }
         struct Point {
@@ -131,8 +153,8 @@ fn bug_regression_operator_overload_mismatched_rhs_does_not_emit_bad_call_ir() {
 }
 
 #[test]
-fn bug_regression_local_names_must_not_be_resolved_to_globals_or_consts() {
-    let _ = compile_err(
+fn bug_regression_local_shadowing_must_resolve_to_the_local_binding_not_the_const() {
+    let module = compile_verified(
         r#"
         const x: int = 1;
         fn main() int {
@@ -141,11 +163,17 @@ fn bug_regression_local_names_must_not_be_resolved_to_globals_or_consts() {
         }
         "#,
     );
+    let main = super::common::function(&module, "main");
+
+    assert!(matches!(
+        main.blocks[0].instructions.last(),
+        Some(IrInstruction::Load { addr, .. }) if addr.0 == 0
+    ));
 }
 
 #[test]
 fn bug_regression_prefixed_integer_literals_reach_ir_as_values() {
-    let module = compile_ok("fn main() int { return 0x10 + 0b10 + 0o7; }");
+    let module = compile_verified("fn main() int { return 0x10 + 0b10 + 0o7; }");
     let values: Vec<i64> = all_instructions(&module)
         .into_iter()
         .filter_map(|instruction| match instruction {
@@ -157,14 +185,21 @@ fn bug_regression_prefixed_integer_literals_reach_ir_as_values() {
         })
         .collect();
 
-    assert!(values.contains(&16), "missing parsed hex value in {values:?}");
-    assert!(values.contains(&2), "missing parsed binary value in {values:?}");
-    assert!(values.contains(&7), "missing parsed octal value in {values:?}");
+    assert!(
+        values.contains(&16),
+        "missing parsed hex value in {values:?}"
+    );
+    assert!(
+        values.contains(&2),
+        "missing parsed binary value in {values:?}"
+    );
+    assert!(
+        values.contains(&7),
+        "missing parsed octal value in {values:?}"
+    );
 }
 
 #[test]
 fn bug_regression_method_this_parameter_position_is_validated_before_codegen_call_mismatch() {
-    assert!(
-        parse_items("struct S { x: int, fn bad(x: int, this) int { return x; } }").is_err()
-    );
+    assert!(parse_items("struct S { x: int, fn bad(x: int, this) int { return x; } }").is_err());
 }

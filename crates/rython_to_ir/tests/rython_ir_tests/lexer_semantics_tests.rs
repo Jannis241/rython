@@ -64,6 +64,27 @@ fn identifiers_are_ascii_and_keywords_are_exact_case_sensitive_matches() {
 }
 
 #[test]
+fn unicode_is_allowed_in_strings_but_not_in_identifiers() {
+    assert!(matches!(
+        Lexer::create_tokens("grüße".to_string()),
+        Err(LexingError::InvalidChar('ü', _))
+    ));
+    assert!(matches!(
+        Lexer::create_tokens("value_ä".to_string()),
+        Err(LexingError::InvalidChar('ä', _))
+    ));
+
+    assert_tokens(
+        r#""Grüße" 'ä'"#,
+        &[
+            (TokenKind::StringLiteral, "Grüße"),
+            (TokenKind::Char, "ä"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
 fn lexes_numeric_literals_without_interpreting_their_semantic_value() {
     assert_tokens(
         "0 42 1_000 0xFF 0xdead_beef 0b1010 0o77 1.25 42. 1e10 2.5e-3",
@@ -91,6 +112,19 @@ fn malformed_prefixed_numbers_report_number_errors() {
             Lexer::create_tokens(source.to_string()),
             Err(LexingError::InvalidNumber(_, _))
         ));
+    }
+}
+
+#[test]
+fn malformed_float_exponents_report_number_errors_instead_of_split_tokens() {
+    for source in ["1e", "1e+", "1e-", "2.5e+"] {
+        assert!(
+            matches!(
+                Lexer::create_tokens(source.to_string()),
+                Err(LexingError::InvalidNumber(_, _))
+            ),
+            "malformed exponent {source:?} must be one invalid number"
+        );
     }
 }
 
@@ -128,6 +162,19 @@ fn malformed_string_and_char_literals_report_specific_errors() {
         Lexer::create_tokens("'ab'".to_string()),
         Err(LexingError::InvalidCharLiteral(_))
     ));
+}
+
+#[test]
+fn malformed_escape_sequences_report_invalid_escape_errors() {
+    for source in ["\"\\x\"", "\"\\x0\"", "\"\\u\"", "\"\\u{}\"", "'\\u{}'"] {
+        assert!(
+            matches!(
+                Lexer::create_tokens(source.to_string()),
+                Err(LexingError::InvalidEscape(_, _))
+            ),
+            "source {source:?} must report InvalidEscape"
+        );
+    }
 }
 
 #[test]
@@ -195,6 +242,30 @@ fn comments_and_whitespace_never_create_tokens() {
 }
 
 #[test]
+fn asm_blocks_are_lexed_as_single_tokens_and_may_contain_nested_braces() {
+    assert_tokens(
+        "asm { mov rax, { nested } };",
+        &[
+            (TokenKind::Asm, " mov rax, { nested } "),
+            (TokenKind::Semicolon, ";"),
+            (TokenKind::Eof, "EOF"),
+        ],
+    );
+}
+
+#[test]
+fn malformed_asm_blocks_are_reported_as_lexer_errors() {
+    assert!(matches!(
+        Lexer::create_tokens("asm mov rax, 0".to_string()),
+        Err(LexingError::AsmMissingBrace(_))
+    ));
+    assert!(matches!(
+        Lexer::create_tokens("asm { mov rax, 0".to_string()),
+        Err(LexingError::UnexpectedEof(_))
+    ));
+}
+
+#[test]
 fn invalid_characters_and_unterminated_block_comments_are_errors_not_panics() {
     assert!(matches!(
         Lexer::create_tokens("@".to_string()),
@@ -213,18 +284,36 @@ fn token_spans_reconstruct_unicode_literal_source_slices() {
 
     let char_token = tokens
         .iter()
-        .find(|token| token.kind == TokenKind::Char)
+        .find(|token| token.kind == TokenKind::Char && token.value == "ä")
         .expect("missing char token");
     let string_token = tokens
         .iter()
         .find(|token| token.kind == TokenKind::StringLiteral)
         .expect("missing string token");
 
-    let char_start = char_token.span.start_char_idx as i32;
-    let char_end = char_start + char_token.span.length;
-    let string_start = string_token.span.start_char_idx as i32;
-    let string_end = string_start + string_token.span.length;
+    // Current project span contract is char-index based and uses a negative
+    // length for tokens whose start is recorded at the end of the lexeme.
+    fn source_slice_for_current_span_contract(source: &str, start: usize, length: i32) -> String {
+        let end = start as i32 + length;
+        let lo = end.min(start as i32) as usize;
+        let hi = end.max(start as i32) as usize;
+        source.chars().skip(lo).take(hi - lo).collect()
+    }
 
-    assert_eq!(&source[char_end as usize..char_start as usize], "'ä'");
-    assert_eq!(&source[string_end as usize..string_start as usize], "\"Grüße\"");
+    assert_eq!(
+        source_slice_for_current_span_contract(
+            source,
+            char_token.span.start_char_idx,
+            char_token.span.length
+        ),
+        "'ä'"
+    );
+    assert_eq!(
+        source_slice_for_current_span_contract(
+            source,
+            string_token.span.start_char_idx,
+            string_token.span.length
+        ),
+        "\"Grüße\""
+    );
 }

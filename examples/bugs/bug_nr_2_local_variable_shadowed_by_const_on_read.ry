@@ -3,7 +3,7 @@ const x: int = 1;
 fn main() int {
     let x: int = 2;
 
-    // Bug: this should read the local x, or shadowing should be rejected.
+    // Bug: shadowing is allowed. This must read the local x and return 2.
     // Current IR reads the const x and returns 1.
     return x;
 }

@@ -133,7 +133,6 @@ fn literals() int {
     let b: bool = false;
     let c: char = 'z';
     let s: string = "hello";
-    let n: string = null;
     let list: int = [1, 2, 3];
     let variant_value: Result = Result::Ok;
     let field_style_variant: Result = Result.Ok;

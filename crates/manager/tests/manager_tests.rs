@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use manager::claude_print_ir::format_ir;
-use manager::run::{run, BuildError, BuildOptions};
+use manager::run::{BuildError, BuildOptions, run};
 use rython_to_ir::ir::{
     IrBlock, IrField, IrFunction, IrInstruction, IrModule, IrType, PrimitiveValue, TempId,
     Terminator,
@@ -49,6 +49,16 @@ fn read_file_returns_exact_file_contents() {
 }
 
 #[test]
+fn read_file_handles_paths_with_spaces() {
+    let path = temp_source("path with spaces", "fn main() int { return 1; }\n");
+
+    let actual = manager::read_file::read_file(path.to_str().unwrap()).unwrap();
+
+    assert_eq!(actual, "fn main() int { return 1; }\n");
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn read_file_reports_missing_files() {
     let path = temp_path("missing", "ry");
 
@@ -60,6 +70,16 @@ fn read_file_reports_missing_files() {
 #[test]
 fn run_accepts_valid_rython_source_and_returns_zero_without_backend_execution() {
     let path = temp_source("valid", "fn main() int { return 0; }\n");
+
+    let code = run(path.to_str().unwrap(), &BuildOptions::default()).unwrap();
+
+    assert_eq!(code, 0);
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn run_accepts_valid_source_paths_with_spaces_in_ir_only_scope() {
+    let path = temp_source("valid path with spaces", "fn main() int { return 0; }\n");
 
     let code = run(path.to_str().unwrap(), &BuildOptions::default()).unwrap();
 
@@ -115,6 +135,34 @@ fn run_reports_lexer_parser_and_ir_codegen_errors_by_phase() {
     fs::remove_file(lex).unwrap();
     fs::remove_file(parse).unwrap();
     fs::remove_file(ir).unwrap();
+}
+
+#[test]
+fn run_rejects_removed_null_expression_during_ir_codegen() {
+    let path = temp_source("null_removed", "fn main() int { return null; }\n");
+
+    let err = run(path.to_str().unwrap(), &BuildOptions::default()).unwrap_err();
+
+    assert!(matches!(err, BuildError::IrCodegen(_)));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn run_reports_parser_supported_but_ir_unsupported_features_as_ir_errors() {
+    let import = temp_source("unsupported_import", "import std.io;\n");
+    let trait_item = temp_source("unsupported_trait", "trait Display { fn show() int; }\n");
+
+    assert!(matches!(
+        run(import.to_str().unwrap(), &BuildOptions::default()).unwrap_err(),
+        BuildError::IrCodegen(_)
+    ));
+    assert!(matches!(
+        run(trait_item.to_str().unwrap(), &BuildOptions::default()).unwrap_err(),
+        BuildError::IrCodegen(_)
+    ));
+
+    fs::remove_file(import).unwrap();
+    fs::remove_file(trait_item).unwrap();
 }
 
 #[test]

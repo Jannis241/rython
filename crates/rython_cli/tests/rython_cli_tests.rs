@@ -74,6 +74,17 @@ fn valid_file_compiles_to_ir_scope_and_reports_zero_exit_code() {
 }
 
 #[test]
+fn valid_file_path_with_spaces_compiles_in_ir_only_scope() {
+    let path = temp_source("valid path with spaces", "fn main() int { return 0; }\n");
+
+    let output = cli().arg(&path).output().unwrap();
+
+    assert!(output.status.success());
+    assert!(stdout(&output).contains("exit code: 0"));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn no_run_is_accepted_but_is_not_required_for_current_ir_only_pipeline() {
     let path = temp_source("no_run", "fn main() int { return 7; }\n");
 
@@ -102,6 +113,37 @@ fn emit_tokens_ast_and_ir_print_stable_markers_to_stderr() {
     assert!(stderr.contains("Function"));
     assert!(stderr.contains("==== IR Module ===="));
     assert!(stderr.contains("IrFunction { name: \"main\""));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn emit_tokens_handles_unicode_literal_contents_without_unicode_identifiers() {
+    let path = temp_source(
+        "emit_unicode_tokens",
+        r#"
+        struct string {
+            start: int,
+            length: int,
+            fn init_start(this) {}
+            fn push_char(this, c: char) {}
+        }
+        fn main() {
+            let c: char = 'ä';
+            let s: string = "Grüße";
+        }
+        "#,
+    );
+
+    let output = cli()
+        .args(["--emit-tokens", "--no-run"])
+        .arg(&path)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stderr = stderr(&output);
+    assert!(stderr.contains("[token] Char"));
+    assert!(stderr.contains("Grüße"));
     fs::remove_file(path).unwrap();
 }
 
@@ -161,6 +203,30 @@ fn lexer_parser_and_ir_errors_are_reported_on_stderr() {
     fs::remove_file(lex).unwrap();
     fs::remove_file(parse).unwrap();
     fs::remove_file(ir).unwrap();
+}
+
+#[test]
+fn removed_null_expression_is_reported_as_ir_error() {
+    let path = temp_source("null_removed", "fn main() int { return null; }\n");
+
+    let output = cli().arg(&path).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("[ir]"));
+    assert!(stdout(&output).contains("exit code: 1"));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn parser_supported_but_ir_unsupported_features_report_ir_errors() {
+    let path = temp_source("unsupported_import", "import std.io;\n");
+
+    let output = cli().arg(&path).output().unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("[ir]"));
+    assert!(stdout(&output).contains("exit code: 1"));
+    fs::remove_file(path).unwrap();
 }
 
 #[test]
