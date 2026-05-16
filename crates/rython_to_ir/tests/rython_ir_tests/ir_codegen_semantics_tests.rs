@@ -146,6 +146,19 @@ fn local_shadowing_of_params_globals_and_consts_is_rejected() {
 }
 
 #[test]
+fn duplicate_local_names_in_the_same_scope_are_rejected() {
+    let _ = compile_err(
+        r#"
+        fn main() int {
+            let x: int = 1;
+            let x: int = 2;
+            return x;
+        }
+        "#,
+    );
+}
+
+#[test]
 fn function_calls_check_argument_count_and_argument_types() {
     let ok = compile_ok(
         r#"
@@ -275,6 +288,66 @@ fn operator_overloads_check_argument_types_like_normal_calls() {
             "#
         ),
         CodegenError::MismatchedTypes(IrType::I64, IrType::Bool)
+    ));
+}
+
+#[test]
+fn index_operator_overloads_check_index_argument_types() {
+    let ok = compile_ok(
+        r#"
+        struct Box {
+            value: int,
+            fn operator [] get(this, index: int) int { return this.value + index; }
+        }
+        fn main() int {
+            let b: Box = Box { value: 1 };
+            return b[0];
+        }
+        "#,
+    );
+    assert!(all_instructions(&ok).iter().any(|instruction| matches!(
+        instruction,
+        IrInstruction::Call { function_name, args, return_type: IrType::I64, .. }
+            if function_name == "Box_get" && args.len() == 2
+    )));
+
+    assert!(matches!(
+        compile_err(
+            r#"
+            struct Box {
+                value: int,
+                fn operator [] get(this, index: int) int { return this.value + index; }
+            }
+            fn main() int {
+                let b: Box = Box { value: 1 };
+                return b[true];
+            }
+            "#
+        ),
+        CodegenError::MismatchedTypes(IrType::I64, IrType::Bool)
+    ));
+}
+
+#[test]
+fn inline_asm_substitutes_known_variables_and_rejects_unknown_variables() {
+    let module = compile_ok(
+        r#"
+        fn main() int {
+            let value: int = 42;
+            asm { mov rax, %value };
+            return value;
+        }
+        "#,
+    );
+
+    assert!(all_instructions(&module).iter().any(|instruction| matches!(
+        instruction,
+        IrInstruction::Asm { code } if code.contains("mov rax, %")
+    )));
+
+    assert!(matches!(
+        compile_err("fn main() { asm { mov rax, %missing }; }"),
+        CodegenError::UnknownVariable(name) if name == "missing"
     ));
 }
 

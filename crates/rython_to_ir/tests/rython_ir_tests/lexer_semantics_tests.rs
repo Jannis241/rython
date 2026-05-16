@@ -10,7 +10,7 @@ fn empty_and_whitespace_only_sources_produce_one_eof() {
 }
 
 #[test]
-fn lexes_supported_keywords_except_removed_null() {
+fn lexes_supported_keywords() {
     assert_tokens(
         "true false char if else return loop while any let fn this in import struct trait global const impl for continue break variant and or not operator",
         &[

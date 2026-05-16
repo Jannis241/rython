@@ -163,6 +163,74 @@ fn parses_control_flow_blocks_and_else_if_shape() {
 }
 
 #[test]
+fn parses_for_loop_list_literal_and_block_scope_syntax() {
+    let function = first_function(
+        r#"
+        fn main() int {
+            let x: int = 0;
+            {
+                let y: int = 1;
+            }
+            for item in [1, 2, 3] {
+                x += item;
+            }
+            return x;
+        }
+        "#,
+    );
+
+    assert!(matches!(function.body.statements[1], Stmt::Block(_)));
+    match &function.body.statements[2] {
+        Stmt::For(for_stmt) => {
+            assert_eq!(for_stmt.var_name, "item");
+            assert!(matches!(for_stmt.iterable, Expr::ListLiteral(_)));
+            assert_eq!(for_stmt.inner_code.statements.len(), 1);
+        }
+        other => panic!("expected for loop, got {other:#?}"),
+    }
+}
+
+#[test]
+fn parses_imports_traits_impls_generics_and_any_trait_types() {
+    let items = parse_items(
+        r#"
+        import std.io;
+        trait Display<T: Clone + Debug> {
+            fn show(value: any Printable + Debug) string;
+        }
+        struct Box<T> {
+            value: T,
+            fn unwrap(this) T { return this.value; }
+        }
+        impl<T: Clone> Display<int> for Box<T> {
+            fn show(this) string { return "Box"; }
+        }
+        "#,
+    )
+    .expect("parse failed");
+
+    assert!(matches!(&items[0], Item::Import(import) if import.import_name == "std.io"));
+    match &items[1] {
+        Item::Trait(trait_item) => {
+            assert_eq!(trait_item.trait_name, "Display");
+            assert_eq!(trait_item.generic_params.len(), 1);
+            assert_eq!(trait_item.function_signatures.len(), 1);
+            assert!(matches!(
+                trait_item.function_signatures[0].params[0].param_type,
+                Type::AnyTrait(_)
+            ));
+        }
+        other => panic!("expected trait, got {other:#?}"),
+    }
+    assert!(matches!(&items[2], Item::Struct(struct_item) if struct_item.struct_name == "Box"));
+    assert!(matches!(
+        &items[3],
+        Item::TraitImplementation(implementation)
+            if implementation.trait_name == "Display" && implementation.struct_name == "Box"
+    ));
+}
+
+#[test]
 fn parses_variant_literal_with_double_colon() {
     let expr = single_return_expr(
         r#"
