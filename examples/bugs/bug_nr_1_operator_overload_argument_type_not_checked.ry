@@ -1,15 +1,17 @@
 struct Box {
     value: int,
+    test: bool,
 
     fn operator + add(this, rhs: int) int {
         return this.value + rhs;
     }
 }
-
 fn main() int {
-    let b: Box = Box { value: 1 };
 
-    // Bug: this should be rejected because rhs expects int, not bool.
-    // Current IR codegen accepts it and emits a mismatched call to Box_add.
-    return b + true;
+    let b: Box = Box { value: 1, test: true};
+
+    // Das hier sollte einen Error geben, wurde jedcoh akzeptiert
+    let new_value: int = b + true;
+
+    return 0;
 }

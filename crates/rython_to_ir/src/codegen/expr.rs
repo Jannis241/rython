@@ -353,9 +353,9 @@ impl IrGenerator {
                         CodegenError::UnknownFunction(format!("{}_[]", struct_name))
                     })?;
 
-                // TODO: Params chekcen?!?!?!??!?!
                 let temp_id = self.next_temp_id();
                 let return_type = func_sig.return_type.unwrap_or(IrType::Void);
+
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,
@@ -768,8 +768,8 @@ impl IrGenerator {
             if let Some((mangled_name, func_sig)) = self.unary_operator_functions.get(&key).cloned()
             {
                 let temp_id = self.next_temp_id();
-                // TODO: params chekcen
                 let return_type = func_sig.return_type.unwrap_or(IrType::Void);
+
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id,
@@ -861,12 +861,20 @@ impl IrGenerator {
             if let Some((mangled_name, func_sig)) = self.operator_functions.get(&key).cloned() {
                 let temp_id = self.next_temp_id();
                 let return_type = func_sig.return_type.unwrap_or(IrType::Void);
-                // TODO: Parameter checken
 
-                let expected_arg_types = func_sig.params;
+                let expected_arg_types = func_sig.params.clone();
                 let got_arg_types = vec![ir_type_1, ir_type_2];
 
-                if expected_arg_types != got_arg_types {}
+                for (arg_ty, expected_ty) in
+                    got_arg_types.iter().zip(func_sig.params.clone().iter())
+                {
+                    if &arg_ty != &expected_ty {
+                        return Err(CodegenError::MismatchedTypes(
+                            expected_ty.clone(),
+                            arg_ty.clone(),
+                        ));
+                    }
+                }
 
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
@@ -884,7 +892,21 @@ impl IrGenerator {
             if let Some((mangled_name, func_sig)) = self.operator_functions.get(&key).cloned() {
                 let temp_id = self.next_temp_id();
                 let return_type = func_sig.return_type.unwrap_or(IrType::Void);
-                // TODO: Parameter checken
+
+                let expected_arg_types = func_sig.params.clone();
+                let got_arg_types = vec![ir_type_1, ir_type_2];
+
+                for (arg_ty, expected_ty) in
+                    got_arg_types.iter().zip(func_sig.params.clone().iter())
+                {
+                    if &arg_ty != &expected_ty {
+                        return Err(CodegenError::MismatchedTypes(
+                            expected_ty.clone(),
+                            arg_ty.clone(),
+                        ));
+                    }
+                }
+
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,
