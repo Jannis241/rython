@@ -15,10 +15,28 @@
     => break target und continue target wird immernoch gespeichert aber dazu auch die yield sachen
 
 Weitere Todos:
-    - bei [] muss der typ noch gecheckt werden
-    - traits, generics, for
+    - Bugs:
+        - bei [] muss der typ noch gecheckt werden
+        - field accses funktioniert nur auf L values, das hier sollte auch gehen:
+                - return make().x + Point { x: 1 }.x;
+        - prefix integer literal
+        - :: panic
+        - doppelte parameter struct felder variant cases
+        - this wird an falscher parameter pos akzeptiert
+        - unicode span bug 'ä'
+        - and und or als short circuit machen
+        - Lexer akzeptiert return 1e;
+    - for codegen
+    - impl gen
+    - generics
+    - any Trait
+    - imports
+    - Top Level operator overloads vollständig machen
     - Variant payloads
     - yield und return richtig machen
+        - generell überlegen wie wir das machen:
+            - zb bei Block struct noch tail_expr option<expr> machen
+            - dass zb die letzte expression oder semikolon der Blockwert ist ohne das ganze mit return zu vermischen
         - muss noch implementiert werden:
             - loop context muss glaube ich auch noch die addr und typ des yield returns speichern
             - gen_yield() in stmt.rs
