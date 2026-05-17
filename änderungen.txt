@@ -1,0 +1,48 @@
+Änderungen:
+- neue tests
+- null entfernt
+- parameter werden jetzt gecheckt bei functions, operator functions
+- paar kleine Bugs gefixxt
+- loop und while wurden als Stmt gelöscht und werden jetzt als Expr gehandelt
+- Yield als neues Token und Statement implementiert
+    => loop und while werden jetzt in parse_primary() geparst
+    => parse_loop und while gibt jetzt Expr zurück statt Stmt
+- (TempId, IrType) wurde jetzt in ein eigenes Enum "ExprValue" verschoben
+    => ist übersichtlicher und leichter für void, da man dafür keine TempId braucht
+- Loop context als Struct erstellt:
+    => loop_stack ist jetzt einfach ein Vec<LoopContext>
+    => Yield wird nicht als neuer Terminator behandelt sondern einfach mit den bestehenden gehandelt
+    => break target und continue target wird immernoch gespeichert aber dazu auch die yield sachen
+
+Weitere Todos:
+    - bei [] muss der typ noch gecheckt werden
+    - traits, generics, for
+    - Variant payloads
+    - yield und return richtig machen
+        - muss noch implementiert werden:
+            - loop context muss glaube ich auch noch die addr und typ des yield returns speichern
+            - gen_yield() in stmt.rs
+            - gen_while() und gen_loop() in expr.rs
+            - gen_expr_block() in stmt.rs
+                -> keine Ahnung ob wir das so überhaupt machen können
+        => Bug: Es kann einen unreachable loop_end block am Ende ohne Termiantor geben wenn man in einer loop direkt return macht.
+            -> es gibt eine temporäre Lösung aber ich weiß nicht ob die nach dem refactoring und dem einbau von yield noch so funktioniert
+            => Achtung bei while (cond) {return 0;} kann es sein dass die Schleife 0 mal läuft
+                -> ich würde das sagen sowas einfach verbieten und das mit dem Terminator "Bug" nur bei Loop fixxen
+        => Man braucht jetzt bei while und loop ein ; am Ende weil es eine Expr ist und kein Statement mehr also: while .. {};
+            -> später ändern
+        => yield; handeln
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::ast::{Asm, Block, If, Let, Loop, Return, Stmt, While};
+use crate::ast::{Asm, Block, If, Let, Return, Stmt, Yield};
 use crate::ir::{IrInstruction, IrType, TempId, Terminator};
 
 use super::error::CodegenError;
-use super::generator::IrGenerator;
+use super::generator::{ExprValue, IrGenerator};
 
 impl IrGenerator {
     pub(super) fn gen_let(&mut self, l: &Let) -> Result<(), CodegenError> {
@@ -33,7 +33,7 @@ impl IrGenerator {
 
         let ir_type = self.convert_to_ir_type(&l.var_type.clone())?;
 
-        let (expr_value, expr_type) = self.gen_expr(&l.value)?;
+        let (expr_value, expr_type) = self.gen_expr(&l.value)?.into_value()?;
 
         if ir_type != expr_type {
             return Err(CodegenError::MismatchedTypes(ir_type, expr_type));
@@ -58,32 +58,38 @@ impl IrGenerator {
 
         Ok(())
     }
+    pub(super) fn gen_yield(&mut self, y: &Yield) -> Result<(), CodegenError> {
+        let ctx = self
+            .loop_stack
+            .last()
+            .ok_or(CodegenError::YieldOutsideLoop)?
+            .clone();
+        todo!()
+    }
 
     pub(super) fn gen_return(&mut self, ret: &Return) -> Result<(), CodegenError> {
         match &ret.return_value {
             Some(value) => {
-                let (temp_id, ret_t) = self.gen_expr(value)?;
-
-                if ret_t != self.current_expected_return_type {
-                    return Err(CodegenError::InvalidReturnType(
-                        self.current_expected_return_type.clone(),
-                        ret_t,
-                    ));
-                }
-                if ret_t == IrType::Void {
-                    self.block_handler.add_terminator(Terminator::Ret(None))?;
-                    // Fix, dass wenn man zb macht:
-                    // fn foo() {}
-                    // fn main() {
-                    //      return foo();
-                    // }
-                    // der return type nicht Some(<ergebnis von foo>) ist sondern None, da es void
-                    // ist
-                    // => void sollte kein wert sein den man wirklich returnt also sozusagen nicht
-                    // Terminator::Ret(Some(void))
-                } else {
-                    self.block_handler
-                        .add_terminator(Terminator::Ret(Some(temp_id)))?;
+                match self.gen_expr(value)? {
+                    ExprValue::Value { id, ty } => {
+                        if ty != self.current_expected_return_type {
+                            return Err(CodegenError::InvalidReturnType(
+                                self.current_expected_return_type.clone(),
+                                ty,
+                            ));
+                        }
+                        self.block_handler
+                            .add_terminator(Terminator::Ret(Some(id)))?;
+                    }
+                    ExprValue::Void => {
+                        if IrType::Void != self.current_expected_return_type {
+                            return Err(CodegenError::InvalidReturnType(
+                                self.current_expected_return_type.clone(),
+                                IrType::Void,
+                            ));
+                        }
+                        self.block_handler.add_terminator(Terminator::Ret(None))?;
+                    }
                 }
 
                 Ok(())
@@ -172,14 +178,18 @@ impl IrGenerator {
             }
             Stmt::Block(b) => self.gen_block(b),
             Stmt::If(if_stmt) => self.gen_if(if_stmt),
-            Stmt::While(w) => self.gen_while(w),
-            Stmt::Loop(l) => self.gen_loop(l),
+            // Stmt::While(w) => self.gen_while(w),
+            // Stmt::Loop(l) => self.gen_loop(l),
             Stmt::Break => self.gen_break(),
             Stmt::Continue => self.gen_continue(),
+            Stmt::Yield(y) => self.gen_yield(y),
             _ => {
                 return Err(CodegenError::InvalidStatement(stmt.clone()));
             }
         }
+    }
+    pub(super) fn gen_expr_block(&mut self, block: &Block) -> Result<ExprValue, CodegenError> {
+        todo!()
     }
 
     // führt einen block aus mit eigenem scope.
@@ -193,7 +203,7 @@ impl IrGenerator {
     }
 
     pub(super) fn gen_if(&mut self, if_stmt: &If) -> Result<(), CodegenError> {
-        let (cond_temp, cond_ty) = self.gen_expr(&if_stmt.condition)?;
+        let (cond_temp, cond_ty) = self.gen_expr(&if_stmt.condition)?.into_value()?;
         if cond_ty != IrType::Bool {
             return Err(CodegenError::MismatchedTypes(IrType::Bool, cond_ty));
         }
@@ -250,93 +260,27 @@ impl IrGenerator {
         Ok(())
     }
 
-    pub(super) fn gen_while(&mut self, w: &While) -> Result<(), CodegenError> {
-        let cond_label = self.fresh_block_label("while_cond");
-        let body_label = self.fresh_block_label("while_body");
-        let end_label = self.fresh_block_label("while_end");
-
-        // aktuellen block in cond springen lassen
-        self.block_handler.add_terminator(Terminator::Jump {
-            target: cond_label.clone(),
-        })?;
-
-        // cond
-        self.block_handler.create_new_block(&cond_label);
-        self.block_handler.jump_to_block(&cond_label);
-        let (cond_temp, cond_ty) = self.gen_expr(&w.condition)?;
-        if cond_ty != IrType::Bool {
-            return Err(CodegenError::MismatchedTypes(IrType::Bool, cond_ty));
-        }
-        self.block_handler.add_terminator(Terminator::Branch {
-            condition: cond_temp,
-            then_block: body_label.clone(),
-            else_block: end_label.clone(),
-        })?;
-
-        // body
-        self.block_handler.create_new_block(&body_label);
-        self.block_handler.jump_to_block(&body_label);
-        self.loop_stack
-            .push((cond_label.clone(), end_label.clone()));
-        self.gen_block(&w.inner_code)?;
-        self.loop_stack.pop();
-        if !self.block_handler.is_current_terminated() {
-            self.block_handler.add_terminator(Terminator::Jump {
-                target: cond_label.clone(),
-            })?;
-        }
-
-        // end (block nach der loop)
-        self.block_handler.create_new_block(&end_label);
-        self.block_handler.jump_to_block(&end_label);
-        Ok(())
-    }
-
-    pub(super) fn gen_loop(&mut self, l: &Loop) -> Result<(), CodegenError> {
-        let body_label = self.fresh_block_label("loop_body");
-        let end_label = self.fresh_block_label("loop_end");
-
-        self.block_handler.add_terminator(Terminator::Jump {
-            target: body_label.clone(),
-        })?;
-
-        self.block_handler.create_new_block(&body_label);
-        self.block_handler.jump_to_block(&body_label);
-        // continue in loop springt zurück zum body start
-        self.loop_stack
-            .push((body_label.clone(), end_label.clone()));
-        self.gen_block(&l.inner_code)?;
-        self.loop_stack.pop();
-        if !self.block_handler.is_current_terminated() {
-            self.block_handler.add_terminator(Terminator::Jump {
-                target: body_label.clone(),
-            })?;
-        }
-
-        self.block_handler.create_new_block(&end_label);
-        self.block_handler.jump_to_block(&end_label);
-        Ok(())
-    }
-
     pub(super) fn gen_break(&mut self) -> Result<(), CodegenError> {
-        let (_cont, brk) = self
+        let ctx = self
             .loop_stack
             .last()
-            .ok_or(CodegenError::BreakOutsideLoop)?
-            .clone();
-        self.block_handler
-            .add_terminator(Terminator::Jump { target: brk })?;
+            .ok_or(CodegenError::BreakOutsideLoop)?;
+
+        self.block_handler.add_terminator(Terminator::Jump {
+            target: ctx.break_target.clone(),
+        })?;
         Ok(())
     }
 
     pub(super) fn gen_continue(&mut self) -> Result<(), CodegenError> {
-        let (cont, _brk) = self
+        let ctx = self
             .loop_stack
             .last()
-            .ok_or(CodegenError::ContinueOutsideLoop)?
-            .clone();
-        self.block_handler
-            .add_terminator(Terminator::Jump { target: cont })?;
+            .ok_or(CodegenError::ContinueOutsideLoop)?;
+
+        self.block_handler.add_terminator(Terminator::Jump {
+            target: ctx.continue_target.clone(),
+        })?;
         Ok(())
     }
 }

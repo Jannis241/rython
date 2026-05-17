@@ -27,6 +27,7 @@ pub enum TokenKind {
     For,
     Continue,
     Break,
+    Yield,
     Variant,
     And,
     Or,
@@ -401,6 +402,7 @@ impl Lexer {
         let ident2 = ident.clone();
 
         let token = match ident.as_str() {
+            "yield" => Token::new(TokenKind::Yield, ident2, ci, -(ident.len() as i32)),
             "true" => Token::new(TokenKind::True, ident2, ci, -(ident.len() as i32)),
             "false" => Token::new(TokenKind::False, ident2, ci, -(ident.len() as i32)),
             "char" => Token::new(TokenKind::Char, ident2, ci, -(ident.len() as i32)),

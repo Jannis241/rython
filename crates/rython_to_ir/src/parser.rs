@@ -423,6 +423,8 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         let curr = self.current()?;
         match curr.kind {
+            TokenKind::While => self.parse_while(),
+            TokenKind::Loop => self.parse_loop(),
             TokenKind::Int => {
                 self.advance()?;
                 Ok(Expr::IntLiteral(curr.value))
@@ -1130,9 +1132,10 @@ impl Parser {
         match self.current()?.kind {
             TokenKind::Let => self.parse_let(),
             TokenKind::If => self.parse_if(),
-            TokenKind::While => self.parse_while(),
-            TokenKind::Loop => self.parse_loop(),
+            // TokenKind::While => self.parse_while(),
+            // TokenKind::Loop => self.parse_loop(),
             TokenKind::For => self.parse_for(),
+            TokenKind::Yield => self.parse_yield(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
@@ -1211,7 +1214,7 @@ impl Parser {
         }
     }
 
-    fn parse_while(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_while(&mut self) -> Result<Expr, ParseError> {
         self.expect_current(TokenKind::While)?;
         self.advance()?;
         let condition = self.parse_expr_no_struct()?;
@@ -1220,13 +1223,13 @@ impl Parser {
         let inner_code = self.parse_block()?;
         self.expect_current(TokenKind::RBrace)?;
         self.advance()?;
-        Ok(Stmt::While(While {
-            condition,
+        Ok(Expr::WhileExpr(While {
+            condition: Box::new(condition),
             inner_code,
         }))
     }
 
-    fn parse_loop(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_loop(&mut self) -> Result<Expr, ParseError> {
         self.expect_current(TokenKind::Loop)?;
         self.advance()?;
         self.expect_current(TokenKind::LBrace)?;
@@ -1234,7 +1237,7 @@ impl Parser {
         let inner_code = self.parse_block()?;
         self.expect_current(TokenKind::RBrace)?;
         self.advance()?;
-        Ok(Stmt::Loop(Loop { inner_code }))
+        Ok(Expr::LoopExpr(Loop { inner_code }))
     }
 
     fn parse_for(&mut self) -> Result<Stmt, ParseError> {
@@ -1272,6 +1275,23 @@ impl Parser {
         self.expect_current(TokenKind::Semicolon)?;
         self.advance()?;
         Ok(Stmt::Continue)
+    }
+    fn parse_yield(&mut self) -> Result<Stmt, ParseError> {
+        // einfach mal return gecopied (funktioniert bestimmt, ka wie das hier sonst geht gurt yo)
+        self.expect_current(TokenKind::Yield)?;
+        self.advance()?;
+        let return_value = match self.current()?.kind {
+            TokenKind::Semicolon | TokenKind::RBrace => None,
+            _ => Some(self.parse_expr()?),
+        };
+        if self.current()?.kind == TokenKind::Semicolon {
+            self.advance()?;
+        } else if self.current()?.kind != TokenKind::RBrace {
+            self.expect_current(TokenKind::Semicolon)?;
+        }
+        Ok(Stmt::Yield(Yield {
+            value: return_value,
+        }))
     }
 
     fn parse_return(&mut self) -> Result<Stmt, ParseError> {
@@ -1351,8 +1371,9 @@ fn is_statement_start(kind: TokenKind) -> bool {
         kind,
         TokenKind::Let
             | TokenKind::If
-            | TokenKind::While
-            | TokenKind::Loop
+            | TokenKind::Yield
+            // | TokenKind::While
+            // | TokenKind::Loop
             | TokenKind::For
             | TokenKind::Break
             | TokenKind::Continue

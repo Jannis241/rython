@@ -5,6 +5,8 @@ use crate::ir::IrType;
 pub enum CodegenError {
     InvalidItem(Item),
     MismatchedTypes(IrType, IrType), // expected type, got
+    //
+    YieldOutsideLoop,
 
     WrongArgumentCount(String, usize, usize), // Func name, expected args, got
     ConflictingVariableNameWithGlobal(String), // Wenn man zb ein global und const mit dem selben namen hat oder
@@ -41,6 +43,7 @@ pub enum CodegenError {
 
     InvalidExpr(Expr),
     InvalidStatement(Stmt),
+    ExpectedValue,
     InvalidReturnType(IrType, IrType), // expected, got
 
     BreakOutsideLoop,

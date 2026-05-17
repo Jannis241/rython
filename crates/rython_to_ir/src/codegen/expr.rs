@@ -3,51 +3,69 @@ use std::ops::Deref;
 
 use super::error::CodegenError;
 use super::generator::IrGenerator;
-use crate::ast::{BinaryOp, Expr, PostFixOp, Type, UnaryOp};
-use crate::codegen::generator;
+use crate::ast::{BinaryOp, Expr, Loop, PostFixOp, Type, UnaryOp, While};
+use crate::codegen::generator::ExprValue;
 use crate::ir::{
     IrBinaryOp, IrField, IrInstruction, IrType, IrTypeDefinition, IrUnaryOp, PrimitiveValue, TempId,
 };
 
 impl IrGenerator {
-    pub(super) fn gen_expr(&mut self, expr: &Expr) -> Result<(TempId, IrType), CodegenError> {
+    pub(super) fn gen_expr(&mut self, expr: &Expr) -> Result<ExprValue, CodegenError> {
         match expr {
-            Expr::Variable(name) => self.gen_variable(name),
-            Expr::IntLiteral(value) => self.gen_intliteral(value),
-            Expr::FloatLiteral(value) => self.gen_floatliteral(value),
-            Expr::BoolLiteral(value) => self.gen_boolliteral(*value),
-            Expr::Unary { op, value } => self.gen_unary_op(op, value),
-            Expr::Assign { target, value } => self.gen_assign(target, value),
+            Expr::LoopExpr(l) => self.gen_loop(l),
+            Expr::WhileExpr(w) => self.gen_while(w),
+            Expr::Variable(name) => self.gen_variable(name).map(ExprValue::from),
+            Expr::IntLiteral(value) => self.gen_intliteral(value).map(ExprValue::from),
+            Expr::FloatLiteral(value) => self.gen_floatliteral(value).map(ExprValue::from),
+            Expr::BoolLiteral(value) => self.gen_boolliteral(*value).map(ExprValue::from),
+            Expr::Unary { op, value } => self.gen_unary_op(op, value).map(ExprValue::from),
+            Expr::Assign { target, value } => self.gen_assign(target, value).map(ExprValue::from),
             Expr::BinaryOp {
                 lhs,
                 binary_op,
                 rhs,
-            } => self.gen_binary_op(lhs, binary_op, rhs),
-            Expr::CharLiteral(character) => self.gen_charliteral(*character),
-            Expr::ListLiteral(inner) => self.gen_list_literal(inner),
+            } => self.gen_binary_op(lhs, binary_op, rhs).map(ExprValue::from),
+            Expr::CharLiteral(character) => self.gen_charliteral(*character).map(ExprValue::from),
+            Expr::ListLiteral(inner) => self.gen_list_literal(inner).map(ExprValue::from),
             Expr::Call {
                 callee,
                 type_args,
                 arguments,
-            } => self.gen_call(callee, type_args, arguments),
-            Expr::PostFix { Op, value } => self.gen_postfix(Op, value),
-            Expr::StringLiteral(value) => self.gen_string_literal(value),
+            } => self
+                .gen_call(callee, type_args, arguments)
+                .map(ExprValue::from),
+            Expr::PostFix { Op, value } => self.gen_postfix(Op, value).map(ExprValue::from),
+            Expr::StringLiteral(value) => self.gen_string_literal(value).map(ExprValue::from),
             Expr::StructLiteral {
                 struct_name,
                 arguments,
-            } => self.gen_struct_literal(struct_name, arguments),
+            } => self
+                .gen_struct_literal(struct_name, arguments)
+                .map(ExprValue::from),
             Expr::Grouping(inner) => self.gen_grouping(inner),
             Expr::BinaryOpAssign {
                 target,
                 binary_op,
                 value,
-            } => self.gen_binary_op_assign(target, binary_op, value),
-            Expr::FieldAccess { object, field_name } => self.gen_field_access(object, field_name),
+            } => self
+                .gen_binary_op_assign(target, binary_op, value)
+                .map(ExprValue::from),
+            Expr::FieldAccess { object, field_name } => self
+                .gen_field_access(object, field_name)
+                .map(ExprValue::from),
             Expr::VariantLiteral {
                 variant_name,
                 case_name,
-            } => self.gen_variant_literal(variant_name, case_name),
+            } => self
+                .gen_variant_literal(variant_name, case_name)
+                .map(ExprValue::from),
         }
+    }
+    pub(super) fn gen_loop(&mut self, l: &Loop) -> Result<ExprValue, CodegenError> {
+        todo!()
+    }
+    pub(super) fn gen_while(&mut self, _w: &While) -> Result<ExprValue, CodegenError> {
+        todo!()
     }
 
     fn gen_variant_literal(
@@ -341,8 +359,8 @@ impl IrGenerator {
             PostFixOp::Brackets(idx_expr) => {
                 // [] wird über die operator überladung auf Named typen aufgelöst
                 // arr[idx] wird zu Struct_<[]>(arr idx)
-                let (lhs_temp, lhs_ty) = self.gen_expr(value)?;
-                let (idx_temp, _idx_ty) = self.gen_expr(idx_expr)?;
+                let (lhs_temp, lhs_ty) = self.gen_expr(value)?.into_value()?;
+                let (idx_temp, _idx_ty) = self.gen_expr(idx_expr)?.into_value()?;
 
                 let struct_name = Self::struct_name_from_ty(&lhs_ty)
                     .ok_or_else(|| CodegenError::UnknownType(format!("{lhs_ty:?}")))?;
@@ -402,7 +420,7 @@ impl IrGenerator {
         //3.für jedes field value storen
         for (field_name, value_expr) in arguments {
             let field_ty = self.get_struct_field_typ(struct_name, field_name)?;
-            let (value_temp, value_ty) = self.gen_expr(value_expr)?;
+            let (value_temp, value_ty) = self.gen_expr(value_expr)?.into_value()?;
             if field_ty != value_ty {
                 return Err(CodegenError::MismatchedTypes(field_ty, value_ty));
             }
@@ -530,7 +548,7 @@ impl IrGenerator {
         // parameter typen überprüfen
         let mut arg_temp_ids = vec![];
         for (arg, expected_ty) in arguments.iter().zip(func_sig.params.iter()) {
-            let (arg_temp, arg_typ) = self.gen_expr(arg)?;
+            let (arg_temp, arg_typ) = self.gen_expr(arg)?.into_value()?;
             if &arg_typ != expected_ty {
                 return Err(CodegenError::MismatchedTypes(expected_ty.clone(), arg_typ));
             }
@@ -571,7 +589,7 @@ impl IrGenerator {
         // das sind die wirklichen argumente mit this ganz vorne
 
         for arg in arguments {
-            actual_args.push(self.gen_expr(arg)?);
+            actual_args.push(self.gen_expr(arg)?.into_value()?);
         }
 
         // dadurch dass this in acutal args drin ist kann man die beiden längen jetzt vergleicehn
@@ -617,7 +635,7 @@ impl IrGenerator {
         method_name: &String,
         arguments: &Vec<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (obj_temp, obj_ty) = self.gen_expr(object)?;
+        let (obj_temp, obj_ty) = self.gen_expr(object)?.into_value()?;
         let struct_name = Self::struct_name_from_ty(&obj_ty)
             .ok_or_else(|| CodegenError::UnknownType(format!("{obj_ty:?}")))?;
         let mangled = format!("{}_{}", struct_name, method_name);
@@ -632,7 +650,7 @@ impl IrGenerator {
         // das sind die wirklichen argumente mit this ganz vorne
 
         for arg in arguments {
-            actual_args.push(self.gen_expr(arg)?);
+            actual_args.push(self.gen_expr(arg)?.into_value()?);
         }
 
         // dadurch dass this in acutal args drin ist kann man die beiden längen jetzt vergleicehn
@@ -684,7 +702,7 @@ impl IrGenerator {
         self.gen_assign(target, &Box::new(expanded_expr))
     }
 
-    fn gen_grouping(&mut self, inner: &Box<Expr>) -> Result<(TempId, IrType), CodegenError> {
+    fn gen_grouping(&mut self, inner: &Box<Expr>) -> Result<ExprValue, CodegenError> {
         self.gen_expr(&inner)
     }
 
@@ -707,7 +725,7 @@ impl IrGenerator {
     ) -> Result<(TempId, IrType), CodegenError> {
         let (addr, target_type) = self.gen_left_value_addr(target)?;
 
-        let (temp_value_var, value_type) = self.gen_expr(value)?;
+        let (temp_value_var, value_type) = self.gen_expr(value)?.into_value()?;
 
         if &target_type != &value_type {
             return Err(CodegenError::MismatchedTypes(
@@ -757,7 +775,7 @@ impl IrGenerator {
         unary_op: &UnaryOp,
         value: &Box<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (tmp_id_1, ir_type) = self.gen_expr(value)?;
+        let (tmp_id_1, ir_type) = self.gen_expr(value)?.into_value()?;
 
         //mangle maige
         // -x wird zu Struct_-(x) !x zu Struct_!(x) ~x zu Struct_~(x)
@@ -849,8 +867,8 @@ impl IrGenerator {
         binary_op: &BinaryOp,
         rhs: &Box<Expr>,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (temp_id_1, ir_type_1) = self.gen_expr(lhs)?;
-        let (temp_id_2, ir_type_2) = self.gen_expr(rhs)?;
+        let (temp_id_1, ir_type_1) = self.gen_expr(lhs)?.into_value()?;
+        let (temp_id_2, ir_type_2) = self.gen_expr(rhs)?.into_value()?;
 
         //erst linke seit probieren dann rechte Seite
         let op_str = Self::binary_op_to_str(binary_op).to_string();

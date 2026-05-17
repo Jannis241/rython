@@ -183,7 +183,10 @@ fn parses_control_flow_blocks_and_else_if_shape() {
 
     assert!(matches!(function.body.statements[0], Stmt::Let(_)));
     assert!(matches!(function.body.statements[1], Stmt::If(_)));
-    assert!(matches!(function.body.statements[2], Stmt::Loop(_)));
+    assert!(matches!(
+        function.body.statements[2],
+        Stmt::Expr(Expr::LoopExpr(_))
+    ));
     assert!(matches!(function.body.statements[3], Stmt::Return(_)));
 }
 

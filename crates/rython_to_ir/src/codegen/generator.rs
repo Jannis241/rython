@@ -28,7 +28,45 @@ pub struct IrGenerator {
     pub(super) type_names: HashSet<String>,
     pub(super) block_label_counter: usize,
     // (continue_target, break_target)
-    pub(super) loop_stack: Vec<(String, String)>,
+    pub(super) loop_stack: Vec<LoopContext>,
+}
+
+// alte loopstack hier rein gemoved damit loops leichter sind für yield
+// man könnte auch einen neuen terminator yield machen aber das wäre komplizierter und ich
+// glaube so geht es auch
+#[derive(Debug, Clone)]
+pub struct LoopContext {
+    pub continue_target: String,
+    pub break_target: String,
+    pub yield_target: String,
+    // Todo ich glaube LoopContext muss auch yield addr und yield type speichern
+}
+
+// cleanere lösung, damit gen_expr nicht immer eine temp_id returnen muss sondern eine ExprValue
+// damit man bei Void nicht unnötig eine temp_id erstellen muss
+#[derive(Debug, Clone)]
+pub enum ExprValue {
+    Value { id: TempId, ty: IrType },
+    Void,
+}
+
+impl ExprValue {
+    pub fn into_value(self) -> Result<(TempId, IrType), CodegenError> {
+        match self {
+            ExprValue::Value { id, ty } => Ok((id, ty)),
+            ExprValue::Void => Err(CodegenError::ExpectedValue),
+        }
+    }
+}
+
+impl From<(TempId, IrType)> for ExprValue {
+    fn from((id, ty): (TempId, IrType)) -> Self {
+        if ty == IrType::Void {
+            ExprValue::Void
+        } else {
+            ExprValue::Value { id, ty }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

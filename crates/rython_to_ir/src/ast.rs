@@ -132,10 +132,9 @@ pub struct ConstVar {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
+    Yield(Yield),
     Let(Let),
     If(If),
-    Loop(Loop),
-    While(While),
     For(For),
     Return(Return),
     Asm(Asm),
@@ -143,6 +142,10 @@ pub enum Stmt {
     Break,
     Continue,
     Expr(Expr),
+}
+#[derive(Debug, Clone)]
+pub struct Yield {
+    pub value: Option<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,7 +169,7 @@ pub struct Loop {
 
 #[derive(Debug, Clone)]
 pub struct While {
-    pub condition: Expr,
+    pub condition: Box<Expr>,
     pub inner_code: Block,
 }
 
@@ -244,6 +247,8 @@ pub enum Expr {
         case_name: String,
     },
     Grouping(Box<Expr>),
+    LoopExpr(Loop),
+    WhileExpr(While),
 }
 
 #[derive(Debug, Clone)]
@@ -425,6 +430,7 @@ fn print_block(block: &Block, level: usize) {
 
 fn print_stmt(stmt: &Stmt, level: usize) {
     match stmt {
+        Stmt::Yield(y) => {} // wofür braucht man print?!?!?!
         Stmt::Let(l) => {
             println!("{}let {} = ...", indent(level), l.var_name);
         }
@@ -447,16 +453,15 @@ fn print_stmt(stmt: &Stmt, level: usize) {
             }
         }
 
-        Stmt::While(w) => {
-            println!("{}while (...)", indent(level));
-            print_block(&w.inner_code, level + 1);
-        }
-
-        Stmt::Loop(l) => {
-            println!("{}loop", indent(level));
-            print_block(&l.inner_code, level + 1);
-        }
-
+        // Stmt::While(w) => {
+        //     println!("{}while (...)", indent(level));
+        //     print_block(&w.inner_code, level + 1);
+        // }
+        //
+        // Stmt::Loop(l) => {
+        //     println!("{}loop", indent(level));
+        //     print_block(&l.inner_code, level + 1);
+        // }
         Stmt::For(f) => {
             println!("{}for {} in (...)", indent(level), f.var_name);
             print_block(&f.inner_code, level + 1);
