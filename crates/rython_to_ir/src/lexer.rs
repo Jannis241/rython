@@ -29,10 +29,9 @@ pub enum TokenKind {
     Break,
     Yield,
     Variant,
-    And,
-    Or,
-    Not,
-
+    // And,
+    // Or,
+    // Not,
     Operator,
 
     Underscore,
@@ -386,14 +385,14 @@ impl Lexer {
     fn handle_idents(&mut self) -> Result<Token, LexingError> {
         let mut ident = String::new();
         ident.push(self.current_char.unwrap()); // der current_char kann nicht None sein da
-        // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
+                                                // handle_idents nur aufgerufen wird bei Some('a'..'z' | 'A'..'Z')
 
         while self
             .peek()
             .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             ident.push(self.peek().unwrap()); // -> unwrap ist safe da vorher geguckt wurde
-            // ob self.peek Some ist
+                                              // ob self.peek Some ist
             self.advance();
         }
 
@@ -426,9 +425,6 @@ impl Lexer {
             "continue" => Token::new(TokenKind::Continue, ident2, ci, -(ident.len() as i32)),
             "break" => Token::new(TokenKind::Break, ident2, ci, -(ident.len() as i32)),
             "variant" => Token::new(TokenKind::Variant, ident2, ci, -(ident.len() as i32)),
-            "and" => Token::new(TokenKind::And, ident2, ci, -(ident.len() as i32)),
-            "or" => Token::new(TokenKind::Or, ident2, ci, -(ident.len() as i32)),
-            "not" => Token::new(TokenKind::Not, ident2, ci, -(ident.len() as i32)),
             "operator" => Token::new(TokenKind::Operator, ident2, ci, -(ident.len() as i32)),
             "_" => Token::new(TokenKind::Underscore, ident2, ci, -(ident.len() as i32)),
             "asm" => {

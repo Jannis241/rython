@@ -154,7 +154,7 @@ impl Parser {
 
     fn parse_or(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_and()?;
-        while matches!(self.current()?.kind, TokenKind::Or | TokenKind::PipePipe) {
+        while matches!(self.current()?.kind, | TokenKind::PipePipe) {
             self.advance()?;
             let rhs = self.parse_and()?;
             lhs = Expr::BinaryOp {
@@ -168,7 +168,7 @@ impl Parser {
 
     fn parse_and(&mut self) -> Result<Expr, ParseError> {
         let mut lhs = self.parse_equality()?;
-        while matches!(self.current()?.kind, TokenKind::And | TokenKind::AmpAmp) {
+        while matches!(self.current()?.kind, TokenKind::AmpAmp) {
             self.advance()?;
             let rhs = self.parse_equality()?;
             lhs = Expr::BinaryOp {
@@ -329,7 +329,7 @@ impl Parser {
         let op = match self.current()?.kind {
             TokenKind::Minus => UnaryOp::Neg,
             TokenKind::Tilde => UnaryOp::BitNot,
-            TokenKind::Bang | TokenKind::Not => UnaryOp::Not,
+            TokenKind::Bang => UnaryOp::Not,
             _ => return self.parse_postfix(),
         };
         self.advance()?;
