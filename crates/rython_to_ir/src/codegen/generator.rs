@@ -99,20 +99,36 @@ impl BlockHandler {
         self.blocks[self.current_block_index].terminator.is_some()
     }
 
-    //Jannis slop fix!! yessirsky war ass (grr)
     pub fn finish_blocks(&self, return_type: &IrType) -> Result<Vec<IrBlock>, CodegenError> {
         let mut final_ir_blocks = Vec::new();
+        let mut reachable_labels = Vec::new();
         for block in &self.blocks {
             let block_terminator = match block.terminator.clone() {
                 Some(t) => Ok(t),
                 None => {
-                    if return_type == &IrType::Void {
-                        Ok(Terminator::Ret(None))
-                    } else {
+                    if return_type != &IrType::Void
+                        && reachable_labels.contains(&block.label.clone())
+                    {
                         Err(CodegenError::MissingTerminator(block.label.clone()))
+                    } else {
+                        Ok(Terminator::Ret(None))
                     }
                 }
             }?;
+            match block_terminator.clone() {
+                Terminator::Jump { target } => {
+                    reachable_labels.push(target);
+                }
+                Terminator::Branch {
+                    condition,
+                    then_block,
+                    else_block,
+                } => {
+                    reachable_labels.push(then_block);
+                    reachable_labels.push(else_block);
+                }
+                _ => {}
+            }
             final_ir_blocks.push(IrBlock {
                 label: block.label.clone(),
                 instructions: block.instructions.clone(),

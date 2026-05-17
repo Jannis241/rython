@@ -1,5 +1,3 @@
-use std::usize;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     True,

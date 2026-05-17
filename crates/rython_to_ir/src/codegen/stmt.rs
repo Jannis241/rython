@@ -15,9 +15,29 @@ impl IrGenerator {
             .find(|g| g.name == *l.var_name)
             .cloned()
         {
-            return Err(CodegenError::ConflictingVariables(l.var_name.to_string()));
+            return Err(CodegenError::ConflictingVariableNameWithGlobal(
+                l.var_name.to_string(),
+            ));
         }
+        if let Some(global) = self
+            .module
+            .constants
+            .iter()
+            .find(|g| g.name == *l.var_name)
+            .cloned()
+        {
+            return Err(CodegenError::ConflictingVariableNameWithConst(
+                l.var_name.to_string(),
+            ));
+        }
+
         let ir_type = self.convert_to_ir_type(&l.var_type.clone())?;
+
+        let (expr_value, expr_type) = self.gen_expr(&l.value)?;
+
+        if ir_type != expr_type {
+            return Err(CodegenError::MismatchedTypes(ir_type, expr_type));
+        }
 
         let id_for_alloc = self.next_temp_id();
 
@@ -26,12 +46,6 @@ impl IrGenerator {
                 temp_id: id_for_alloc,
                 ty: ir_type.clone(),
             })?;
-
-        let (expr_value, expr_type) = self.gen_expr(&l.value)?;
-
-        if ir_type != expr_type {
-            return Err(CodegenError::MismatchedTypes(ir_type, expr_type));
-        }
 
         self.block_handler
             .add_instruction_to_current_block(IrInstruction::Store {
