@@ -373,6 +373,18 @@ impl IrGenerator {
                 let temp_id = self.next_temp_id();
                 let return_type = func_sig.return_type.unwrap_or(IrType::Void);
 
+                let expected_types = func_sig.params;
+                let got_args = vec![lhs_ty, _idx_ty];
+
+                for (arg_ty, expected_ty) in got_args.iter().zip(expected_types.iter()) {
+                    if &arg_ty != &expected_ty {
+                        return Err(CodegenError::MismatchedTypes(
+                            expected_ty.clone(),
+                            arg_ty.clone(),
+                        ));
+                    }
+                }
+
                 self.block_handler
                     .add_instruction_to_current_block(IrInstruction::Call {
                         temp_id: temp_id,

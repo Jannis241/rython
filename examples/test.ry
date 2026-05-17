@@ -1,4 +1,11 @@
+struct Box {
+    value: int,
+    fn operator [] get(this, index: int) int {
+        return this.value + index;
+    }
+}
 
+<<<<<<< HEAD
 fn main() int{
     let x: int = 3;
     let x: int = 4;
@@ -9,4 +16,9 @@ fn main() int{
 
 
     return x;
+=======
+fn main() int {
+    let b: Box = Box { value: 1 };
+    return b[true];
+>>>>>>> 931d25b (fixed operator bug)
 }
