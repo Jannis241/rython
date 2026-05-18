@@ -1,8 +1,0 @@
-fn main() int {
-    loop {
-        return 1;
-    }
-
-    // Bug: codegen still creates an unreachable loop_end block without a
-    // terminator, so non-void functions fail with MissingTerminator.
-}

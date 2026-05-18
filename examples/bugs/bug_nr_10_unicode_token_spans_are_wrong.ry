@@ -1,7 +1,0 @@
-fn main() {
-    // Bug: run with --emit-tokens. Unicode contents are legal in char/string
-    // literals, but token source slices are wrong under the current char-index
-    // based span contract.
-    let c: char = 'ä';
-    let s: string = "Grüße";
-}

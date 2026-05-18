@@ -1,6 +1,0 @@
-fn main() float {
-    // Bug: malformed exponent literals should be one lexer InvalidNumber error.
-    // Current lexer tokenizes `1e` as `1` followed by identifier `e`, so the
-    // failure is delayed to the parser.
-    return 1e;
-}

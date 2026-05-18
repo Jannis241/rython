@@ -1,6 +1,0 @@
-fn main(value: any Display) {
-    // Bug: `any` is parser-supported but not IR-supported yet.
-    // Codegen should return a clean unsupported/invalid feature error.
-    // Current codegen reaches todo!() and panics.
-    return;
-}
