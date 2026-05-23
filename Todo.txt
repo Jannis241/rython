@@ -12,7 +12,6 @@ Weitere Todos:
         - prefix integer literal
         - lokale variablen muessen const/global beim Shadowing ueberdecken
         - loop { return ... } erzeugt unterminierten unreachable loop_end block
-        - :: panic
         - doppelte parameter struct felder variant cases
         - this wird an falscher parameter pos akzeptiert
         - unicode span bug 'ä'
