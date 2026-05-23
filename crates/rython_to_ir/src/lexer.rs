@@ -501,10 +501,6 @@ impl Lexer {
                 }
             }
         }
-        // Span length is the char count of the full lexeme (both quotes
-        // included). Deriving it from the opening/closing quote char indices
-        // keeps the span correct for multi-byte and escaped contents, where
-        // `str` (the decoded value) no longer matches the source char count.
         let lexeme_char_len = (self.current_idx - start_idx + 1) as i32;
         Ok(Token::new(
             TokenKind::StringLiteral,
@@ -542,9 +538,6 @@ impl Lexer {
             }));
         }
 
-        // Same char-index based span contract as string literals: length is
-        // the full lexeme char count including both quotes, computed from the
-        // quote positions so multi-byte contents (e.g. 'ä') stay correct.
         let lexeme_char_len = (self.current_idx - start_idx + 1) as i32;
         Ok(Token::new(
             TokenKind::Char,
