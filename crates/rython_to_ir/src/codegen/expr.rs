@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+
 use std::ops::Deref;
 
 use super::error::CodegenError;
@@ -217,21 +218,7 @@ impl IrGenerator {
         object: &Box<Expr>,
         field_name: &String,
     ) -> Result<(TempId, IrType), CodegenError> {
-        let (lv_addr, lv_ty) = self.gen_left_value_addr(object)?;
-
-        let (base_addr, struct_ty) = match &lv_ty {
-            IrType::Pointer(_) => {
-                let loaded = self.next_temp_id();
-                self.block_handler
-                    .add_instruction_to_current_block(IrInstruction::Load {
-                        temp_id: loaded,
-                        ty: lv_ty.clone(),
-                        addr: lv_addr,
-                    })?;
-                (loaded, lv_ty)
-            }
-            _ => (lv_addr, lv_ty),
-        };
+        let (base_addr, struct_ty) = self.gen_struct_base_addr(object)?;
 
         let struct_name = Self::struct_name_from_ty(&struct_ty)
             .ok_or_else(|| CodegenError::UnknownType(format!("{struct_ty:?}")))?;
@@ -256,6 +243,44 @@ impl IrGenerator {
                 _ => None,
             },
             _ => None,
+        }
+    }
+    fn gen_struct_base_addr(
+        &mut self,
+        object: &Box<Expr>,
+    ) -> Result<(TempId, IrType), CodegenError> {
+        match object.deref() {
+            Expr::StructLiteral {
+                struct_name,
+                arguments,
+            } => self.gen_struct_literal(struct_name, arguments),
+
+            Expr::Call {
+                callee,
+                type_args,
+                arguments,
+            } => self.gen_call(callee, type_args, arguments),
+
+            Expr::Grouping(inner) => self.gen_struct_base_addr(inner),
+
+            _ => {
+                let (lv_addr, lv_ty) = self.gen_left_value_addr(object)?;
+
+                match &lv_ty {
+                    IrType::Pointer(_) => {
+                        let loaded = self.next_temp_id();
+                        self.block_handler.add_instruction_to_current_block(
+                            IrInstruction::Load {
+                                temp_id: loaded,
+                                ty: lv_ty.clone(),
+                                addr: lv_addr,
+                            },
+                        )?;
+                        Ok((loaded, lv_ty))
+                    }
+                    _ => Ok((lv_addr, lv_ty)),
+                }
+            }
         }
     }
 
@@ -290,15 +315,6 @@ impl IrGenerator {
                 }
                 Err(CodegenError::UnknownVariable(name.clone()))
             }
-            Expr::StructLiteral {
-                struct_name,
-                arguments,
-            } => self.gen_struct_literal(struct_name, arguments),
-            Expr::Call {
-                callee,
-                type_args,
-                arguments,
-            } => self.gen_call(callee, type_args, arguments),
             Expr::FieldAccess { object, field_name } => self.gen_field_addr(object, field_name),
             Expr::Grouping(inner) => self.gen_left_value_addr(inner),
             other => Err(CodegenError::InvalidExpr(other.clone())),
