@@ -8,7 +8,7 @@ Weitere Todos:
         - rython_to_ir Test-Build reparieren (TokenKind::And/Or/Not)
         - bei [] muss der typ noch gecheckt werden
         - field accses funktioniert nur auf L values, das hier sollte auch gehen:
-                - return make().x + Point { x: 1 }.x;
+        - return make().x + Point { x: 1 }.x;
         - prefix integer literal
         - lokale variablen muessen const/global beim Shadowing ueberdecken
         - loop { return ... } erzeugt unterminierten unreachable loop_end block
