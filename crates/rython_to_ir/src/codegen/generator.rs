@@ -526,6 +526,15 @@ impl IrGenerator {
                         cases: variantdef.cases.clone(),
                     };
 
+                    let case_names = variantdef
+                        .cases
+                        .iter()
+                        .map(|irf| irf.clone())
+                        .collect::<Vec<String>>();
+                    if let Some(dupplicate) = find_duplicate(&case_names) {
+                        return Err(CodegenError::DuplicateField(dupplicate));
+                    }
+
                     self.type_defs.push(typedef.clone());
                     self.module.types.push(typedef);
                 }
@@ -549,6 +558,15 @@ impl IrGenerator {
             match item {
                 Item::Function(f) => {
                     let func = self.gen_func_struct(f)?;
+                    let param_names = func
+                        .parameter
+                        .iter()
+                        .map(|irf| irf.name.clone())
+                        .collect::<Vec<String>>();
+                    if let Some(dupplicate) = find_duplicate(&param_names) {
+                        return Err(CodegenError::DuplicateParam(dupplicate));
+                    }
+
                     self.module.functions.push(func);
                 }
                 Item::Asm(asm) => {
@@ -557,6 +575,15 @@ impl IrGenerator {
                 }
                 Item::Struct(struct_def) => {
                     self.add_to_current_mangel_prefix(struct_def.struct_name.clone());
+
+                    let field_names = struct_def
+                        .fields
+                        .iter()
+                        .map(|irf| irf.field_name.clone())
+                        .collect::<Vec<String>>();
+                    if let Some(dupplicate) = find_duplicate(&field_names) {
+                        return Err(CodegenError::DuplicateField(dupplicate));
+                    }
 
                     for f in struct_def.functions.iter() {
                         let func = self.gen_func_struct(f)?;
@@ -727,4 +754,16 @@ pub fn generate_code(items: &[Item]) -> Result<IrModule, CodegenError> {
     generator.generate_code_inner(items)?;
 
     return Ok(generator.module);
+}
+
+fn find_duplicate<T: Eq + std::hash::Hash + Clone>(items: &[T]) -> Option<T> {
+    let mut seen = HashSet::new();
+
+    for item in items {
+        if !seen.insert(item) {
+            return Some(item.clone());
+        }
+    }
+
+    None
 }

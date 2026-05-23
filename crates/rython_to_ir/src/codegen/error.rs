@@ -48,4 +48,8 @@ pub enum CodegenError {
 
     BreakOutsideLoop,
     ContinueOutsideLoop,
+
+    DuplicateParam(String),
+    DuplicateVariant(String),
+    DuplicateField(String),
 }
