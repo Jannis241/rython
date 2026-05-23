@@ -71,7 +71,7 @@ Bis dieser Buildfehler behoben ist, ist die alte Zahl `56/73 Tests gruen` nicht 
 
 ### Build-Blocker 0: Keyword-Tests erwarten `and`/`or`/`not` als eigene Token
 
-Prioritaet: Sehr hoch  
+Prioritaet: Sehr hoch
 Bereich: Lexer/Testvertrag
 
 Aktueller Test:
@@ -106,8 +106,8 @@ Entscheidung noetig:
 
 ### Bug 1: Field-Access funktioniert nur auf Lvalues
 
-Prioritaet: Hoch  
-Bereich: AST/Semantik/Codegen  
+Prioritaet: Hoch
+Bereich: AST/Semantik/Codegen
 Beispiel: `examples/bugs/bug_nr_5_field_access_on_struct_rvalue_fails.ry`
 
 Minimales Beispiel:
@@ -148,8 +148,8 @@ Fix-Richtung:
 
 ### Bug 2: `loop { return ... }` erzeugt unterminierten unreachable Endblock
 
-Prioritaet: Hoch  
-Bereich: Kontrollfluss/IR-Codegen  
+Prioritaet: Hoch
+Bereich: Kontrollfluss/IR-Codegen
 Beispiel: `examples/bugs/bug_nr_6_loop_return_creates_unterminated_unreachable_end_block.ry`
 
 Minimales Beispiel:
@@ -185,8 +185,8 @@ Fix-Richtung:
 
 ### Bug 3: Prefixed Integer-Literale funktionieren nicht bis zum IR-Codegen
 
-Prioritaet: Hoch  
-Bereich: Lexer/Codegen/Const-Eval  
+Prioritaet: Hoch
+Bereich: Lexer/Codegen/Const-Eval
 Beispiel: `examples/bugs/bug_nr_3_prefixed_integer_literal_rejected_by_codegen.ry`
 
 Minimales Beispiel:
@@ -227,8 +227,8 @@ Fix-Richtung:
 
 ### Bug 4: Shadowing-Aufloesung bevorzugt `const`/`global` vor lokalen Bindings
 
-Prioritaet: Hoch  
-Bereich: Semantik/Symbol Resolution  
+Prioritaet: Hoch
+Bereich: Semantik/Symbol Resolution
 Beispiel: `examples/bugs/bug_nr_2_local_variable_shadowed_by_const_on_read.ry`
 
 Gueltige Testsemantik:
@@ -269,7 +269,7 @@ Fix-Richtung:
 
 ### Bug 5: `operator []` prueft Argumenttypen nicht
 
-Prioritaet: Hoch  
+Prioritaet: Hoch
 Bereich: Operator-Overloads/Type Checking
 
 Minimales Beispiel:
@@ -308,8 +308,8 @@ Fix-Richtung:
 
 ### Bug 6: Ungueltige `::`-Syntax panickt im Parser
 
-Prioritaet: Hoch  
-Bereich: Parser/Fehlerbehandlung  
+Prioritaet: Hoch
+Bereich: Parser/Fehlerbehandlung
 Beispiel: `examples/bugs/bug_nr_7_invalid_coloncolon_syntax_panics_parser.ry`
 
 Minimales Beispiel:
@@ -343,8 +343,8 @@ Fix-Richtung:
 
 ### Bug 7: Doppelte Parameter, Struct-Felder und Variant-Cases werden akzeptiert
 
-Prioritaet: Mittel  
-Bereich: Parser/Semantik  
+Prioritaet: Mittel
+Bereich: Parser/Semantik
 Beispiel: `examples/bugs/bug_nr_8_duplicate_params_fields_and_variant_cases_accepted.ry`
 
 Minimale Beispiele:
@@ -375,8 +375,8 @@ Fix-Richtung:
 
 ### Bug 8: `this` wird an falscher Parameterposition akzeptiert
 
-Prioritaet: Mittel  
-Bereich: Parser/Semantik/Method-Calls  
+Prioritaet: Mittel
+Bereich: Parser/Semantik/Method-Calls
 Beispiel: `examples/bugs/bug_nr_9_this_parameter_position_in_method_is_inconsistent.ry`
 
 Gueltige Testsemantik:
@@ -416,8 +416,8 @@ Fix-Richtung:
 
 ### Bug 9: Unicode-Spans und CLI-Token-Slices sind falsch
 
-Prioritaet: Mittel  
-Bereich: Lexer/Diagnostics/CLI  
+Prioritaet: Mittel
+Bereich: Lexer/Diagnostics/CLI
 Beispiel: `examples/bugs/bug_nr_10_unicode_token_spans_are_wrong.ry`
 
 Minimales Beispiel:
@@ -454,8 +454,8 @@ Fix-Richtung:
 
 ### Bug 10: `and` und `or` haben keine Short-Circuit-IR
 
-Prioritaet: Hoch  
-Bereich: Codegen/IR-Kontrollfluss  
+Prioritaet: Hoch
+Bereich: Codegen/IR-Kontrollfluss
 Beispiel: `examples/bugs/bug_nr_11_short_circuit_and_or_lowered_eagerly.ry`
 
 Minimales Beispiel:
@@ -488,8 +488,8 @@ Fix-Richtung:
 
 ### Bug 11: Parser-only Feature `any` panickt im IR-Codegen
 
-Prioritaet: Mittel  
-Bereich: Unsupported-Feature-Handling  
+Prioritaet: Mittel
+Bereich: Unsupported-Feature-Handling
 Beispiel: `examples/bugs/bug_nr_12_any_trait_type_codegen_panics.ry`
 
 Minimales Beispiel:
@@ -520,8 +520,8 @@ Fix-Richtung:
 
 ### Bug 12: Malformed Float-Exponents werden nicht als Lexer-Fehler erkannt
 
-Prioritaet: Mittel  
-Bereich: Lexer/Fehlerqualitaet  
+Prioritaet: Mittel
+Bereich: Lexer/Fehlerqualitaet
 Beispiel: `examples/bugs/bug_nr_13_malformed_float_exponent_is_not_lex_error.ry`
 
 Minimales Beispiel:
@@ -552,7 +552,7 @@ Fix-Richtung:
 
 ### Bug 13: CLI `--emit-ir` schreibt auf stdout statt stderr
 
-Prioritaet: Niedrig bis Mittel  
+Prioritaet: Niedrig bis Mittel
 Bereich: CLI/Manager-Ausgabe
 
 CLI-Usage sagt:
