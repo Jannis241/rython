@@ -6,20 +6,22 @@ Weitere Todos:
             - entscheiden: ausgeschriebene Keywords behalten oder nur && || ! verwenden
     - Bugs:
         - rython_to_ir Test-Build reparieren (TokenKind::And/Or/Not)
-        - bei [] muss der typ noch gecheckt werden
-        - field accses funktioniert nur auf L values, das hier sollte auch gehen:
-        - return make().x + Point { x: 1 }.x;
-        - prefix integer literal
         - lokale variablen muessen const/global beim Shadowing ueberdecken
         - loop { return ... } erzeugt unterminierten unreachable loop_end block
         - doppelte parameter struct felder variant cases
-        - this wird an falscher parameter pos akzeptiert
         - unicode span bug 'ä'
         - and und or als short circuit machen, falls diese Keywords in der Sprache bleiben
         - any darf im Codegen nicht panicken, sondern muss sauber fehlschlagen
         - Lexer akzeptiert return 1e;
         - CLI --emit-ir schreibt noch nicht auf denselben Stream wie die anderen emit-Ausgaben
         - examples/bugs Verzeichnis wieder anlegen oder Bugreport-Referenzen entfernen
+    - Gefixt:
+        - field access auf Struct-Rvalues und Call-Ergebnissen:
+            - return make().x + Point { x: 1 }.x;
+        - prefix integer literal
+        - bei [] wird der Index-Typ gegen die Operator-Signatur gecheckt
+        - a::; panickt nicht mehr, sondern wird Parser-Error
+        - this wird an falscher Parameterposition abgelehnt
     - for codegen
     - impl gen
     - generics

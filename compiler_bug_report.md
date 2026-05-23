@@ -1,6 +1,6 @@
 ## Zusammenfassung
 
-Stand: 2026-05-23, nach erneutem Lauf der aktiven Cargo-Tests.
+Stand: 2026-05-23, nach erneutem Lauf der aktiven Cargo-Tests und anschliessender Source-Pruefung.
 
 Bewerteter Compilerpfad:
 
@@ -13,22 +13,23 @@ Der Assembly-/Link-/Run-Pfad ist weiterhin nicht Teil dieser Bewertung.
 Aktuell sichtbar:
 
 - Der `rython_to_ir`-Test-Build bricht bereits beim Kompilieren ab, weil `lexer_semantics_tests::lexes_supported_keywords` die Token-Varianten `TokenKind::And`, `TokenKind::Or` und `TokenKind::Not` erwartet, diese Varianten in `lexer.rs` aber auskommentiert sind. Dadurch laufen die fachlichen Rython->IR-Regressionstests aktuell nicht bis zur Ausfuehrung.
-- Field-Access auf Struct-Rvalues und Call-Ergebnissen funktioniert im Codegen nicht.
 - `loop { return ... }` in nicht-void Funktionen erzeugt einen unerreichbaren, aber unterminierten `loop_end` Block.
-- Prefixed Integer-Literale (`0x`, `0b`, `0o`) lexen korrekt, werden aber im Codegen/Const-Evaluator nicht geparst.
 - Shadowing ist erlaubt, aber Namensauflösung bevorzugt aktuell `const`/`global` vor lokalen Bindings.
-- `operator []` prueft den Index-Argumenttyp nicht und erzeugt inkonsistente IR.
-- `a::;` panickt im Parser durch `unimplemented!()` statt einen `ParseError` zu liefern.
 - Doppelte Parameter, Struct-Felder und Variant-Cases werden akzeptiert.
-- Methoden akzeptieren `this` an falscher Parameterposition.
 - Token-Spans und CLI-Token-Slices sind bei Unicode-Literalen falsch.
 - `and` und `or` werden eager als Binary-IR erzeugt; gewuenscht ist Short-Circuit-Control-Flow.
 - Parser-only Features wie `any` koennen im Codegen panicken statt sauber als unsupported/invalid zu fehlschlagen.
 - Malformed Float-Exponents wie `1e` werden nicht als einzelner Lexer-Fehler erkannt.
 - CLI `--emit-ir` schreibt aktuell nicht auf denselben Stream wie die anderen Emit-Ausgaben.
+- Seit der letzten Aktualisierung wurden Field-Access auf Struct-Rvalues/Call-Ergebnissen, prefixed Integer-Literale, `operator []`-Index-Typpruefung, malformed `::` ohne Parser-Panic und `this`-Positionsvalidierung gefixt.
 
 Nicht mehr als aktive Bug-Skripte gefuehrt:
 
+- Field-Access auf Struct-Rvalues und Call-Ergebnissen ist im Codegen gefixt.
+- Prefixed Integer-Literale (`0x`, `0b`, `0o`) werden im Expr-Codegen und Const-Evaluator ueber `parse_int_literal` geparst.
+- `operator []` prueft den Index-Argumenttyp inzwischen gegen die Operator-Funktionssignatur.
+- `a::;` liefert einen Parserfehler statt durch `unimplemented!()` zu panicken.
+- `this` nach anderen Methodenparametern wird vom Parser abgelehnt.
 - Alter binaerer Operator-Overload-Bug (`b + true` bei `rhs: int`) ist fuer normale binaere Operatoren gefixt.
 - `null` wurde vollstaendig aus Rython entfernt. Das alte `null`-Bug-Skript wurde geloescht; `null` existiert nur noch in negativen Tests.
 
@@ -102,9 +103,11 @@ Entscheidung noetig:
 - `for`, imports, traits, impls, generics, `any` und top-level operator overloads sollen aktuell nicht als vollstaendig IR-unterstuetzt getestet werden; Codegen muss dafuer aber sauber fehlschlagen statt zu panicken.
 - CLI ohne Argumente soll Exit Code 0 liefern.
 
-## Aktive Bugs
+## Bugs und Status
 
 ### Bug 1: Field-Access funktioniert nur auf Lvalues
+
+Status: Gefixt.
 
 Prioritaet: Hoch
 Bereich: AST/Semantik/Codegen
@@ -129,22 +132,29 @@ Erwartet:
 - Field-Access auf Struct-Rvalues und Call-Ergebnissen ist gueltig.
 - Codegen berechnet die Feldadresse und laedt den Wert.
 
-Tatsaechlich:
+Vor dem Fix:
 
 ```text
 InvalidExpr(Call { callee: Variable("make"), type_args: [], arguments: [] })
 ```
 
-Aktiver Test:
+Aktuell:
+
+- `gen_field_addr` verwendet eine getrennte Struct-Basisadresslogik.
+- Struct-Literale und Call-Ergebnisse werden als bereits vorhandene Struct-Basiswerte behandelt.
+- Fuer Lvalue-Variablen wird weiterhin bei `Pointer(Named(...))` aus dem lokalen Slot geladen.
+- Manuell verifiziert mit `cargo run -p rython_cli -- --emit-ir examples/bug.ry`: der falsche extra `Load { ty: Pointer(Named("Point")), ... }` ist verschwunden.
+
+Regressionstest:
 
 ```text
 ir_codegen_semantics_tests::field_access_on_struct_rvalues_and_call_results_is_valid
 ```
 
-Fix-Richtung:
+Umgesetzt:
 
-- Lvalue-Adresslogik fuer Zuweisungsziele von lesendem Field-Access trennen.
-- Fuer lesenden Zugriff zuerst `gen_expr(object)` ausfuehren und bei `Pointer(Named(...))` direkt diese Basisadresse verwenden.
+- Lvalue-Adresslogik fuer Zuweisungsziele wurde von lesendem Field-Access getrennt.
+- Call-/Literal-Rvalues werden fuer `GetFieldAddr` direkt als Basis verwendet.
 
 ### Bug 2: `loop { return ... }` erzeugt unterminierten unreachable Endblock
 
@@ -185,6 +195,8 @@ Fix-Richtung:
 
 ### Bug 3: Prefixed Integer-Literale funktionieren nicht bis zum IR-Codegen
 
+Status: Gefixt.
+
 Prioritaet: Hoch
 Bereich: Lexer/Codegen/Const-Eval
 Beispiel: `examples/bugs/bug_nr_3_prefixed_integer_literal_rejected_by_codegen.ry`
@@ -206,21 +218,26 @@ Erwartet:
 - `0xFF -> 255`
 - `0o7 -> 7`
 
-Tatsaechlich:
+Vor dem Fix:
 
 ```text
 InvalidIntLiteral("0b1010")
 InvalidIntLiteral("0x10")
 ```
 
-Aktive Tests:
+Aktuell:
+
+- `parse_int_literal` verarbeitet Dezimal, `0x`, `0b` und `0o`.
+- `gen_intliteral` und `eval_const_expr` verwenden dieselbe Parser-Funktion.
+
+Regressionstests:
 
 ```text
 ir_codegen_semantics_tests::prefixed_integer_literals_work_in_globals_consts_and_expressions
 pipeline_regression_tests::bug_regression_prefixed_integer_literals_reach_ir_as_values
 ```
 
-Fix-Richtung:
+Umgesetzt:
 
 - Gemeinsame Integer-Parser-Funktion fuer Dezimal, `0x`, `0b`, `0o`.
 - In `gen_intliteral` und `eval_const_expr` verwenden.
@@ -269,6 +286,8 @@ Fix-Richtung:
 
 ### Bug 5: `operator []` prueft Argumenttypen nicht
 
+Status: Gefixt.
+
 Prioritaet: Hoch
 Bereich: Operator-Overloads/Type Checking
 
@@ -292,21 +311,28 @@ Erwartet:
 
 - Fehler, weil der Index `int` sein muss.
 
-Tatsaechlich:
+Vor dem Fix:
 
 - Codegen erzeugt einen Call `Box_get(..., Bool)` und akzeptiert falsche IR.
 
-Aktiver Test:
+Aktuell:
+
+- Der `PostFixOp::Brackets`-Pfad vergleicht `lhs`- und Index-Typ gegen `func_sig.params`.
+- Ein falscher Index-Typ fuehrt zu `CodegenError::MismatchedTypes`.
+
+Regressionstest:
 
 ```text
 ir_codegen_semantics_tests::index_operator_overloads_check_index_argument_types
 ```
 
-Fix-Richtung:
+Umgesetzt:
 
 - Im `PostFixOp::Brackets`-Pfad dieselbe Argumentanzahl- und Typpruefung wie bei normalen Calls und Method-Calls anwenden.
 
 ### Bug 6: Ungueltige `::`-Syntax panickt im Parser
+
+Status: Gefixt.
 
 Prioritaet: Hoch
 Bereich: Parser/Fehlerbehandlung
@@ -324,20 +350,25 @@ Erwartet:
 
 - `ParseError`, keine Panic.
 
-Tatsaechlich:
+Vor dem Fix:
 
 ```text
 not implemented
 ```
 
-Aktive Tests:
+Aktuell:
+
+- Der alte `ColonColon`-Postfix-Arm mit `unimplemented!()` ist deaktiviert.
+- Malformed `a::;` bleibt nach `a` stehen und faellt regulär in einen `ParseError`.
+
+Regressionstests:
 
 ```text
 parser_ast_semantics_tests::malformed_double_colon_syntax_returns_parse_error_without_panic
 parser_ast_semantics_tests::malformed_parser_inputs_return_errors_instead_of_panicking
 ```
 
-Fix-Richtung:
+Umgesetzt:
 
 - Den `TokenKind::ColonColon`-Postfix-Arm bis Turbofish-Implementierung mit einem normalen `ParseError` ersetzen.
 
@@ -375,6 +406,8 @@ Fix-Richtung:
 
 ### Bug 8: `this` wird an falscher Parameterposition akzeptiert
 
+Status: Gefixt.
+
 Prioritaet: Mittel
 Bereich: Parser/Semantik/Method-Calls
 Beispiel: `examples/bugs/bug_nr_9_this_parameter_position_in_method_is_inconsistent.ry`
@@ -399,18 +432,23 @@ Erwartet:
 
 - Parse-/Semantikfehler, weil `this` nicht an Position 0 steht.
 
-Tatsaechlich:
+Vor dem Fix:
 
 - Parser akzeptiert `this` nach anderen Parametern.
 
-Aktive Tests:
+Aktuell:
+
+- `this` wird nur im speziellen Parameterpfad akzeptiert.
+- Nach einem normalen Parameter erwartet der Parser wieder `Ident`; `TokenKind::This` an Position > 0 erzeugt einen Parse-Fehler.
+
+Regressionstests:
 
 ```text
 parser_ast_semantics_tests::this_parameter_is_only_valid_as_first_method_parameter
 pipeline_regression_tests::bug_regression_method_this_parameter_position_is_validated_before_codegen_call_mismatch
 ```
 
-Fix-Richtung:
+Umgesetzt:
 
 - Parser/Semantik muss `this` ausserhalb von Position 0 ablehnen.
 
@@ -582,6 +620,61 @@ Fix-Richtung:
 
 ## Gefixte oder entfernte Bug-Skripte
 
+### Gefixt: Field-Access auf Struct-Rvalues und Call-Ergebnissen
+
+Ehemaliges Skript:
+
+```text
+examples/bugs/bug_nr_5_field_access_on_struct_rvalue_fails.ry
+```
+
+Grund:
+
+- `make().x` und `Point { x: 1 }.x` erzeugen jetzt `GetFieldAddr` direkt auf der Struct-Basisadresse.
+- Der falsche extra Pointer-Load wurde entfernt.
+
+### Gefixt: Prefixed Integer-Literale
+
+Ehemaliges Skript:
+
+```text
+examples/bugs/bug_nr_3_prefixed_integer_literal_rejected_by_codegen.ry
+```
+
+Grund:
+
+- `0x`, `0b` und `0o` werden im Expr-Codegen und Const-Evaluator geparst.
+
+### Gefixt: `operator []`-Index-Typpruefung
+
+Grund:
+
+- Der Bracket-Operator prueft jetzt die Argumenttypen gegen die Operator-Signatur.
+
+### Gefixt: malformed `::` ohne Parser-Panic
+
+Ehemaliges Skript:
+
+```text
+examples/bugs/bug_nr_7_invalid_coloncolon_syntax_panics_parser.ry
+```
+
+Grund:
+
+- Der Parser liefert fuer `a::;` einen normalen Fehler statt zu panicken.
+
+### Gefixt: `this` nur als erster Methodenparameter
+
+Ehemaliges Skript:
+
+```text
+examples/bugs/bug_nr_9_this_parameter_position_in_method_is_inconsistent.ry
+```
+
+Grund:
+
+- `this` nach normalen Parametern wird vom Parser abgelehnt.
+
 ### Entfernt: binaerer Operator-Overload-RHS-Typ
 
 Ehemaliges Skript:
@@ -600,7 +693,7 @@ ir_codegen_semantics_tests::operator_overloads_check_argument_types_like_normal_
 pipeline_regression_tests::bug_regression_operator_overload_mismatched_rhs_does_not_emit_bad_call_ir
 ```
 
-Der verwandte `operator []`-Bug bleibt aktiv, weil dort der Index-Typ noch nicht geprueft wird.
+Der verwandte `operator []`-Bug ist inzwischen ebenfalls gefixt.
 
 ### Entfernt: `null`
 
@@ -625,12 +718,8 @@ rython_cli_tests::removed_null_expression_is_reported_as_ir_error
 
 ```text
 examples/bugs/bug_nr_2_local_variable_shadowed_by_const_on_read.ry
-examples/bugs/bug_nr_3_prefixed_integer_literal_rejected_by_codegen.ry
-examples/bugs/bug_nr_5_field_access_on_struct_rvalue_fails.ry
 examples/bugs/bug_nr_6_loop_return_creates_unterminated_unreachable_end_block.ry
-examples/bugs/bug_nr_7_invalid_coloncolon_syntax_panics_parser.ry
 examples/bugs/bug_nr_8_duplicate_params_fields_and_variant_cases_accepted.ry
-examples/bugs/bug_nr_9_this_parameter_position_in_method_is_inconsistent.ry
 examples/bugs/bug_nr_10_unicode_token_spans_are_wrong.ry
 examples/bugs/bug_nr_11_short_circuit_and_or_lowered_eagerly.ry
 examples/bugs/bug_nr_12_any_trait_type_codegen_panics.ry
@@ -652,11 +741,10 @@ Hinweis Stand 2026-05-23: Im Arbeitsbaum existiert aktuell kein `examples/bugs/`
 ## Naechste sinnvolle Fix-Reihenfolge
 
 1. Testvertrag fuer `and`/`or`/`not` klaeren und `rython_to_ir` wieder kompilierbar machen.
-2. Parser-Panic bei `::` entfernen, weil das ein klarer Stabilitaetsfehler ist.
-3. Integer-Prefix-Parsing zentralisieren, weil Lexer und Sprachsyntax das Feature bereits akzeptieren.
-4. Lokale Scope-Lookup-Reihenfolge korrigieren, damit Shadowing semantisch stimmt.
-5. `operator []` an normale Call-Typpruefung angleichen.
-6. Short-Circuit-IR fuer `and`/`or` implementieren, falls ausgeschriebene Bool-Operatoren Teil der Sprache bleiben.
-7. `any` und andere unsupported Parser-Features in saubere `CodegenError`s umwandeln.
-8. Unicode-Span-Berechnung und CLI-Token-Slicing stabilisieren.
-9. `--emit-ir` auf denselben Debug-Ausgabestream wie Tokens/AST bringen.
+2. Lokale Scope-Lookup-Reihenfolge korrigieren, damit Shadowing semantisch stimmt.
+3. Duplicate-Checks fuer Parameter, Struct-Felder und Variant-Cases implementieren.
+4. Short-Circuit-IR fuer `and`/`or` implementieren, falls ausgeschriebene Bool-Operatoren Teil der Sprache bleiben.
+5. `any` und andere unsupported Parser-Features in saubere `CodegenError`s umwandeln.
+6. Unicode-Span-Berechnung und CLI-Token-Slicing stabilisieren.
+7. Malformed Float-Exponents als Lexerfehler melden.
+8. `--emit-ir` auf denselben Debug-Ausgabestream wie Tokens/AST bringen.
