@@ -1,51 +1,145 @@
-Weitere Todos:
-    - Als erstes:
-        - Testvertrag fuer and/or/not klaeren:
-            - rython_to_ir kompiliert aktuell nicht, weil Tests TokenKind::And/Or/Not erwarten
-            - lexer.rs hat diese Token-Varianten auskommentiert
-            - entscheiden: ausgeschriebene Keywords behalten oder nur && || ! verwenden
-    - Bugs:
-        - rython_to_ir Test-Build reparieren (TokenKind::And/Or/Not)
-        - lokale variablen muessen const/global beim Shadowing ueberdecken
-        - loop { return ... } erzeugt unterminierten unreachable loop_end block
-        - doppelte parameter struct felder variant cases
-        - unicode span bug 'ä'
-        - and und or als short circuit machen, falls diese Keywords in der Sprache bleiben
-        - any darf im Codegen nicht panicken, sondern muss sauber fehlschlagen
-        - Lexer akzeptiert return 1e;
-        - CLI --emit-ir schreibt noch nicht auf denselben Stream wie die anderen emit-Ausgaben
-        - examples/bugs Verzeichnis wieder anlegen oder Bugreport-Referenzen entfernen
-    - Gefixt:
-        - CLI --emit-tokens kann Unicode-Literale wie 'ä' und "Grüße" ausgeben
-        - field access auf Struct-Rvalues und Call-Ergebnissen:
-            - return make().x + Point { x: 1 }.x;
-        - prefix integer literal
-        - bei [] wird der Index-Typ gegen die Operator-Signatur gecheckt
-        - a::; panickt nicht mehr, sondern wird Parser-Error
-        - this wird an falscher Parameterposition abgelehnt
-    - for codegen
-    - impl gen
-    - generics
-    - any Trait
-    - imports
-    - Top Level operator overloads vollständig machen
-    - Variant payloads
-    - yield und return richtig machen
-        - generell überlegen wie wir das machen:
-            - zb bei Block struct noch tail_expr option<expr> machen
-            - dass zb die letzte expression oder semikolon der Blockwert ist ohne das ganze mit return zu vermischen
-        - muss noch implementiert werden:
-            - loop context muss glaube ich auch noch die addr und typ des yield returns speichern
-            - gen_yield() in stmt.rs
-            - gen_while() und gen_loop() in expr.rs
-            - gen_expr_block() in stmt.rs
-                -> keine Ahnung ob wir das so überhaupt machen können
-        => Bug: Es kann einen unreachable loop_end block am Ende ohne Termiantor geben wenn man in einer loop direkt return macht.
-            -> es gibt eine temporäre Lösung aber ich weiß nicht ob die nach dem refactoring und dem einbau von yield noch so funktioniert
-            => Achtung bei while (cond) {return 0;} kann es sein dass die Schleife 0 mal läuft
-                -> ich würde das sagen sowas einfach verbieten und das mit dem Terminator "Bug" nur bei Loop fixxen
-        => Man braucht jetzt bei while und loop ein ; am Ende weil es eine Expr ist und kein Statement mehr also: while .. {};
-            -> später ändern
-        => yield; handeln
-    - Turbofish implementieren mit eigenem syntax
-    - Type inference
+Rython TODOs bis "alles ausser IR-to-ASM fertig"
+
+Scope:
+    - Diese Liste deckt Lexer, Parser, AST/Semantik, Rython->IR, Manager/CLI, Tests und Beispiele ab.
+    - IR-to-Assembly, Linking und echte Programmausfuehrung sind bewusst nicht enthalten.
+
+Als erstes:
+    - Rython->IR-Testbuild entblocken:
+        - `and`, `or`, `not` aus Keyword-Tests entfernen.
+        - Tests und Beispiele auf `&&`, `||`, `!` umstellen.
+        - `TokenKind::And`, `TokenKind::Or`, `TokenKind::Not` nicht wieder einfuehren.
+    - Danach `cargo test -p rython_to_ir` ausfuehren und die echte Fehlerliste neu bewerten.
+
+Bugs:
+    - `&&` und `||` als Short-Circuit-Control-Flow lowern, nicht als eager `Binary And/Or`.
+    - Lokales Shadowing reparieren:
+        - `let` darf `const`/`global` in innerem Scope shadowen.
+        - Lookup-Reihenfolge: lokale Scopes zuerst, danach const/global.
+        - Doppelte Namen nur im selben Scope verbieten.
+    - `while` und `loop` wieder als stabile Kontrollfluss-Statements ohne erzwungenes Semikolon unterstuetzen oder den Expr-Vertrag vollstaendig umsetzen.
+    - `gen_while()` implementieren.
+    - `gen_loop()` implementieren.
+    - `break` und `continue` im Loop-Kontext fuer `while` und `loop` sauber verdrahten.
+    - `loop { return ... }` ohne erreichbaren unterminierten Endblock generieren.
+    - Doppelte Parameter, Struct-Felder und Variant-Cases frueh und konsistent ablehnen.
+    - `any` und andere Parser-only Features im Codegen sauber als `CodegenError` melden, nicht panicken.
+    - Malformed Float-Exponents wie `1e`, `1e+`, `1e-`, `2.5e+` als `InvalidNumber` lexen.
+    - `--emit-ir` auf stderr schreiben, passend zur CLI-Hilfe und zu `--emit-tokens`/`--emit-ast`.
+    - Unicode-Span-Test nach Testbuild-Fix erneut ausfuehren und ggf. Span-Berechnung korrigieren.
+
+Semantik / Frontend:
+    - Expliziten Semantik-Pass einfuehren oder Parser-Validierung erweitern fuer:
+        - duplicate names,
+        - unsupported feature gating,
+        - Scope-Regeln,
+        - Methodenreceiver-Regeln,
+        - globale Namenskonflikte.
+    - Fehlerarten schaerfen:
+        - UnsupportedFeature,
+        - DuplicateParam,
+        - DuplicateField,
+        - DuplicateVariantCase,
+        - DuplicateLocalInSameScope.
+    - Parser-only Features klar von IR-unterstuetzten Features trennen.
+    - Beispiele so pflegen, dass `current_features.ry` wirklich bis IR kompiliert.
+    - `all_features.ry` als Parser-/Syntaxshowcase markieren und von IR-Erfolg entkoppeln.
+
+Kontrollfluss / Blockwerte:
+    - Entscheiden, ob `while`/`loop` Expressions mit Wert oder Statements sind.
+    - Falls Expressions:
+        - Blockwert-/Tail-Expression-Modell sauber designen.
+        - `yield`-Semantik definieren.
+        - `LoopContext` um Yield-Ziel, Yield-Adresse und Yield-Typ erweitern.
+        - `gen_yield()` implementieren.
+        - `gen_expr_block()` implementieren.
+    - Falls Statements:
+        - `Yield` entfernen oder als unsupported sauber melden.
+        - Parser-/AST-Namen entsprechend vereinfachen.
+    - Reachability in `finish_blocks` robust machen:
+        - vom Entry-Block aus traversieren,
+        - nur erreichbare unterminierte nicht-void Blocks als Fehler melden,
+        - unreachbare Blocks entweder entfernen oder korrekt terminieren.
+
+Rython->IR Feature-Fertigstellung:
+    - Imports:
+        - Modulpfade aufloesen,
+        - Dateien laden,
+        - Zyklen und Duplicate Imports behandeln,
+        - importierte Namen kontrolliert in Scope bringen.
+    - Traits:
+        - Trait-Signaturen semantisch pruefen,
+        - Trait-Bounds modellieren,
+        - Trait-Methodenaufrufe definieren.
+    - Impl-Bloecke:
+        - `impl Trait for Type` validieren,
+        - fehlende/extra Methoden melden,
+        - Methoden in Funktionssignaturen und Mangling integrieren.
+    - Generics:
+        - generische Funktionen und Structs semantisch pruefen,
+        - Type-Parameter in Scopes fuehren,
+        - Monomorphisierung oder alternatives IR-Modell festlegen,
+        - generische Methodenaufrufe und Struct-Literale unterstuetzen.
+    - `any Trait`:
+        - entweder voll implementieren oder als unsupported sauber blockieren.
+    - Top-level operator overloads:
+        - gewuenschte Semantik definieren,
+        - Signaturen registrieren,
+        - Konflikte mit Struct-Operatoren klaeren,
+        - Codegen anbinden oder sauber ablehnen.
+    - Static/path calls:
+        - `Type::method(...)` getrennt von Variant-Literalen parsen.
+        - Turbofish/Type-Args-Syntax fuer Calls fertig designen.
+    - Variant payloads:
+        - Syntax festlegen,
+        - AST erweitern,
+        - IR-Typdefinition und InitVariant erweitern,
+        - Pattern Matching oder Access-Regeln planen.
+    - Type inference:
+        - `let x = expr;` falls gewuenscht implementieren,
+        - Return-/Literal-/Generic-Inferenz definieren.
+    - Const-Eval:
+        - erlaubte Const-Ausdruecke erweitern,
+        - Fehler fuer nicht-konstante Ausdruecke verbessern.
+    - Builtins/Runtime-IR:
+        - `string` und `list` nicht nur ad hoc ueber erwartete User-Structs behandeln oder klar als Library-Vertrag dokumentieren.
+        - Builtin-Funktionen wie `malloc` im IR-only Scope sauber modellieren oder als externe Signaturen deklarieren.
+
+Operatoren / Calls:
+    - Normale Calls, Methoden-Calls und Operator-Calls ueber gemeinsame Argumentpruefung vereinheitlichen.
+    - Ungenutzte `expected_arg_types`-Variablen entfernen.
+    - Operator-Mangling stabil dokumentieren.
+    - Unary-Operator-Overloads mit Argumenttyppruefung absichern.
+
+Tests:
+    - `rython_to_ir`-Tests wieder kompilierbar machen.
+    - Short-Circuit-Tests auf `&&` und `||` umstellen.
+    - Tests fuer `!` als einzigen logischen Not-Operator behalten.
+    - Regressiontests fuer Shadowing, Loop/While, Any-Panic, malformed floats und CLI stderr aktiv halten.
+    - Negative Tests fuer `and`, `or`, `not` als nicht unterstuetzte Operator-Syntax hinzufuegen.
+    - `examples/current_features.ry` in einem Pipeline-Test gruen halten.
+
+Manager / CLI im IR-only Scope:
+    - `--emit-ir` auf stderr fixen.
+    - Hilfe/Docs klar halten: Backend-Flags sind akzeptiert, aber bis IR-to-ASM ohne Artefakt-Garantie.
+    - Unused Imports und Warnungen entfernen, soweit sie nicht direkt zu Backend-Platzhaltern gehoeren.
+    - `run_after_build`, `-o`, `--emit-asm`, `--keep`, `--release` bis zum Backend entweder als no-op dokumentieren oder sichtbarer melden.
+
+Beispiele / Dokumentation:
+    - `README.md` mit aktuellem Sprachstand fuellen:
+        - gueltige Bool-Syntax `&&`, `||`, `!`,
+        - aktuell IR-unterstuetzte Features,
+        - Parser-only Features,
+        - bekannte Grenzen.
+    - `examples/current_features.ry` auf den tatsaechlich gruenen IR-Featurestand bringen.
+    - `examples/all_features.ry` auf gueltige Syntax aktualisieren, auch wenn nicht alles Codegen kann.
+    - Alte Bug-Skript-Referenzen entweder wieder als Dateien anlegen oder aus Reports entfernen.
+
+Gefixt / nicht mehr als aktive Bugs fuehren:
+    - Field-Access auf Struct-Rvalues und Call-Ergebnissen.
+    - Prefixed Integer-Literale `0x`, `0b`, `0o`.
+    - `operator []` Index-Typpruefung.
+    - Malformed `a::;` ohne Parser-Panic.
+    - `this` nur als erster Methodenparameter.
+    - Entferntes `null` wird negativ getestet.
+    - CLI-Token-Ausgabe fuer Unicode-Literale.

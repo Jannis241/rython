@@ -1,64 +1,53 @@
-## Zusammenfassung
+## Compiler Bug Report
 
-Stand: 2026-05-23, nach erneutem Lauf der aktiven Cargo-Tests und anschliessender Source-Pruefung.
+Stand: 2026-05-23
 
-Bewerteter Compilerpfad:
+Bewerteter Pfad:
 
 ```text
-Rython source -> Lexer -> Parser/AST -> IR
+Rython source -> Lexer -> Parser/AST -> IR -> CLI/Manager-Ausgabe
 ```
 
-Der Assembly-/Link-/Run-Pfad ist weiterhin nicht Teil dieser Bewertung.
+Der IR-to-Assembly-Pfad ist nicht Teil dieses Reports.
 
-Aktuell sichtbar:
+Geklaerte Sprachentscheidung:
 
-- Der `rython_to_ir`-Test-Build bricht bereits beim Kompilieren ab, weil `lexer_semantics_tests::lexes_supported_keywords` die Token-Varianten `TokenKind::And`, `TokenKind::Or` und `TokenKind::Not` erwartet, diese Varianten in `lexer.rs` aber auskommentiert sind. Dadurch laufen die fachlichen Rython->IR-Regressionstests aktuell nicht bis zur Ausfuehrung.
-- `loop { return ... }` in nicht-void Funktionen erzeugt einen unerreichbaren, aber unterminierten `loop_end` Block.
-- Shadowing ist erlaubt, aber Namensauflösung bevorzugt aktuell `const`/`global` vor lokalen Bindings.
-- Doppelte Parameter, Struct-Felder und Variant-Cases werden akzeptiert.
-- Token-Spans sind bei Unicode-Literalen noch fraglich/falsch; die CLI-Token-Ausgabe fuer Unicode-Literale ist inzwischen stabil.
-- `and` und `or` werden eager als Binary-IR erzeugt; gewuenscht ist Short-Circuit-Control-Flow.
-- Parser-only Features wie `any` koennen im Codegen panicken statt sauber als unsupported/invalid zu fehlschlagen.
-- Malformed Float-Exponents wie `1e` werden nicht als einzelner Lexer-Fehler erkannt.
-- CLI `--emit-ir` schreibt aktuell nicht auf denselben Stream wie die anderen Emit-Ausgaben.
-- Seit der letzten Aktualisierung wurden Field-Access auf Struct-Rvalues/Call-Ergebnissen, prefixed Integer-Literale, `operator []`-Index-Typpruefung, malformed `::` ohne Parser-Panic, `this`-Positionsvalidierung und CLI-Token-Ausgabe fuer Unicode-Literale gefixt.
-
-Nicht mehr als aktive Bug-Skripte gefuehrt:
-
-- Field-Access auf Struct-Rvalues und Call-Ergebnissen ist im Codegen gefixt.
-- Prefixed Integer-Literale (`0x`, `0b`, `0o`) werden im Expr-Codegen und Const-Evaluator ueber `parse_int_literal` geparst.
-- `operator []` prueft den Index-Argumenttyp inzwischen gegen die Operator-Funktionssignatur.
-- `a::;` liefert einen Parserfehler statt durch `unimplemented!()` zu panicken.
-- `this` nach anderen Methodenparametern wird vom Parser abgelehnt.
-- `--emit-tokens` rekonstruiert Unicode-Literal-Slices ueber `content.chars()` und gibt `Grüße`/`'ä'` stabil aus.
-- Alter binaerer Operator-Overload-Bug (`b + true` bei `rhs: int`) ist fuer normale binaere Operatoren gefixt.
-- `null` wurde vollstaendig aus Rython entfernt. Das alte `null`-Bug-Skript wurde geloescht; `null` existiert nur noch in negativen Tests.
+- Gueltige Bool-Operator-Syntax ist `&&`, `||` und `!`.
+- Die ausgeschriebenen Woerter `and`, `or` und `not` sind keine Rython-Operatoren.
+- Tests, Beispiele oder Bugbeschreibungen, die `and`, `or` oder `not` als Operatoren erwarten, sind veraltet.
 
 ## Aktueller Teststatus
 
 Verifiziert mit:
 
 ```text
-cargo test -p rython_to_ir
+cargo test
+cargo test -p rython_to_ir --lib
 cargo test -p manager
 cargo test -p rython_cli
+cargo test -p ir_to_assembly
 ```
 
-Ergebnis am 2026-05-23:
+Ergebnis:
 
+- `cargo test`: rot. Der Workspace-Testlauf bricht beim Kompilieren der `rython_to_ir`-Tests ab.
+- `cargo test -p rython_to_ir --lib`: gruen, aber es gibt dort aktuell 0 Unit-Tests.
 - `cargo test -p manager`: gruen, 14/14 Tests.
 - `cargo test -p rython_cli`: rot, 12/13 Tests gruen.
-- `cargo test -p rython_to_ir`: rot vor Testausfuehrung; Testcrate kompiliert nicht wegen fehlender `TokenKind::And`, `TokenKind::Or`, `TokenKind::Not`.
+- `cargo test -p ir_to_assembly`: gruen, 2/2 Harness-Tests. Nicht Teil der Bewertung.
 
-Die roten bzw. nicht kompilierenden Tests sind absichtlich fachliche Regressionstests. Sie wurden nicht an das aktuelle fehlerhafte Verhalten angepasst.
+## Build-Blocker: veralteter `and/or/not`-Testvertrag
 
-Aktuelle `rython_cli`-Fehler:
+Prioritaet: Sehr hoch
+Bereich: Tests/Beispiele/Lexer-Vertrag
 
-```text
-rython_cli_tests::emit_tokens_ast_and_ir_print_stable_markers_to_stderr
-```
+Unerwartetes Verhalten:
 
-Aktueller `rython_to_ir`-Buildfehler:
+- `crates/rython_to_ir/tests/rython_ir_tests/lexer_semantics_tests.rs` referenziert `TokenKind::And`, `TokenKind::Or` und `TokenKind::Not`.
+- Diese Varianten existieren in `crates/rython_to_ir/src/lexer.rs` nicht; sie sind dort auskommentiert.
+- Dadurch kompiliert das Testcrate `rython_ir_tests` nicht, und alle fachlichen Rython->IR-Tests sind blockiert.
+
+Aktueller Fehler:
 
 ```text
 error[E0599]: no variant or associated item named `And` found for enum `TokenKind`
@@ -66,192 +55,55 @@ error[E0599]: no variant or associated item named `Or` found for enum `TokenKind
 error[E0599]: no variant or associated item named `Not` found for enum `TokenKind`
 ```
 
-Bis dieser Buildfehler behoben ist, ist die alte Zahl `56/73 Tests gruen` nicht mehr belastbar.
+Erwartet:
 
-## Vorgelagerter Test-Build-Blocker
+- Die Keyword-Tests entfernen `and`, `or`, `not` aus der Keyword-Liste.
+- Operator-Tests verwenden `TokenKind::AmpAmp`, `TokenKind::PipePipe` und `TokenKind::Bang`.
+- Quellen in Tests und Beispielen verwenden `&&`, `||` und `!`.
 
-### Build-Blocker 0: Keyword-Tests erwarten `and`/`or`/`not` als eigene Token
+Nicht erwartet:
 
-Prioritaet: Sehr hoch
-Bereich: Lexer/Testvertrag
+- `TokenKind::And`, `TokenKind::Or` oder `TokenKind::Not` wieder einzufuehren.
 
-Aktueller Test:
+Zusatzbefund:
 
-```text
-lexer_semantics_tests::lexes_supported_keywords
-```
+- `examples/current_features.ry`, `examples/all_features.ry` und mehrere IR-Codegen-Tests verwenden noch `and`/`or`.
+- Mit der geklaerten Syntax sind diese Quellen veraltet und muessen auf `&&`/`||` umgestellt werden.
 
-Tatsaechlich:
-
-- `TokenKind::{And, Or, Not}` sind in `crates/rython_to_ir/src/lexer.rs` auskommentiert.
-- Die Tests referenzieren diese Varianten direkt und verhindern dadurch den kompletten `rython_to_ir`-Testlauf.
-
-Entscheidung noetig:
-
-- Entweder `and`, `or` und `not` als Keyword-Token wieder einfuehren und Parser/Codegen darauf ausrichten.
-- Oder den Testvertrag auf die aktuell verwendeten Operator-Token `&&`, `||`, `!` zuruecknehmen und die Sprachentscheidung zu ausgeschriebenen Bool-Operatoren entfernen.
-
-## Gueltige Sprachentscheidungen fuer Tests
-
-- Shadowing ist erlaubt. Innere Bindings muessen korrekt aufgeloest werden; nach Verlassen des inneren Scopes gilt wieder die aeussere Bindung.
-- `and` und `or` muessen Short-Circuit-Semantik haben.
-- `null` ist kein Rython-Feature mehr.
-- Identifier sind absichtlich ASCII-only; Unicode ist in String-/Char-Literalen erlaubt.
-- Der aktuelle Span-Kontrakt ist char-index-basiert und wird in Tests beibehalten.
-- Methoden ohne `this` sind statische Methoden.
-- Parser-Support und IR-Support fuer zukuenftige Features werden getrennt bewertet.
-- `for`, imports, traits, impls, generics, `any` und top-level operator overloads sollen aktuell nicht als vollstaendig IR-unterstuetzt getestet werden; Codegen muss dafuer aber sauber fehlschlagen statt zu panicken.
-- CLI ohne Argumente soll Exit Code 0 liefern.
-
-## Bugs und Status
-
-### Bug 1: Field-Access funktioniert nur auf Lvalues
-
-Status: Gefixt.
+## Bug 1: `&&` und `||` werden eager statt short-circuit ausgewertet
 
 Prioritaet: Hoch
-Bereich: AST/Semantik/Codegen
-Beispiel: `examples/bugs/bug_nr_5_field_access_on_struct_rvalue_fails.ry`
+Bereich: IR-Codegen/Kontrollfluss
 
 Minimales Beispiel:
 
 ```source
-struct Point { x: int }
-
-fn make() Point {
-    return Point { x: 41 };
-}
-
-fn main() int {
-    return make().x + Point { x: 1 }.x;
-}
+fn rhs() bool { return true; }
+fn main(left: bool) bool { return left && rhs(); }
 ```
 
 Erwartet:
 
-- Field-Access auf Struct-Rvalues und Call-Ergebnissen ist gueltig.
-- Codegen berechnet die Feldadresse und laedt den Wert.
-
-Vor dem Fix:
-
-```text
-InvalidExpr(Call { callee: Variable("make"), type_args: [], arguments: [] })
-```
-
-Aktuell:
-
-- `gen_field_addr` verwendet eine getrennte Struct-Basisadresslogik.
-- Struct-Literale und Call-Ergebnisse werden als bereits vorhandene Struct-Basiswerte behandelt.
-- Fuer Lvalue-Variablen wird weiterhin bei `Pointer(Named(...))` aus dem lokalen Slot geladen.
-- Manuell verifiziert mit `cargo run -p rython_cli -- --emit-ir examples/bug.ry`: der falsche extra `Load { ty: Pointer(Named("Point")), ... }` ist verschwunden.
-
-Regressionstest:
-
-```text
-ir_codegen_semantics_tests::field_access_on_struct_rvalues_and_call_results_is_valid
-```
-
-Umgesetzt:
-
-- Lvalue-Adresslogik fuer Zuweisungsziele wurde von lesendem Field-Access getrennt.
-- Call-/Literal-Rvalues werden fuer `GetFieldAddr` direkt als Basis verwendet.
-
-### Bug 2: `loop { return ... }` erzeugt unterminierten unreachable Endblock
-
-Prioritaet: Hoch
-Bereich: Kontrollfluss/IR-Codegen
-Beispiel: `examples/bugs/bug_nr_6_loop_return_creates_unterminated_unreachable_end_block.ry`
-
-Minimales Beispiel:
-
-```source
-fn main() int {
-    loop {
-        return 1;
-    }
-}
-```
-
-Erwartet:
-
-- Das Programm ist gueltig, weil jeder erreichbare Pfad returned.
+- `&&` wertet die rechte Seite nur aus, wenn die linke Seite `true` ist.
+- `||` wertet die rechte Seite nur aus, wenn die linke Seite `false` ist.
+- Das IR enthaelt Branch-/Merge-Blocks statt eines eager `Binary And` oder `Binary Or`.
 
 Tatsaechlich:
 
-```text
-MissingTerminator("loop_end_1:")
-```
-
-Aktiver Test:
-
-```text
-ir_codegen_semantics_tests::loop_with_unconditional_return_is_valid_in_non_void_function
-```
+- `gen_binary_op` ruft zuerst `gen_expr(lhs)` und danach immer `gen_expr(rhs)` auf.
+- Danach wird fuer primitive Bool-Operatoren ein `IrInstruction::Binary { op: And/Or, ... }` erzeugt.
+- Dadurch wuerden Seiteneffekte oder Fehler in der rechten Seite auftreten, obwohl sie durch Short-Circuiting uebersprungen werden muessten.
 
 Fix-Richtung:
 
-- `loop_end` nur erzeugen, wenn er erreichbar ist.
-- Alternativ Reachability in `finish_blocks` beruecksichtigen.
+- `BinaryOp::And` und `BinaryOp::Or` vor der normalen Binary-Codegen-Logik gesondert behandeln.
+- RHS-Block und Merge-Block erzeugen.
+- Tests von `and/or` auf `&&/||` umstellen.
 
-### Bug 3: Prefixed Integer-Literale funktionieren nicht bis zum IR-Codegen
-
-Status: Gefixt.
-
-Prioritaet: Hoch
-Bereich: Lexer/Codegen/Const-Eval
-Beispiel: `examples/bugs/bug_nr_3_prefixed_integer_literal_rejected_by_codegen.ry`
-
-Minimales Beispiel:
-
-```source
-const ten: int = 0b1010;
-global mask: int = 0xFF;
-
-fn main() int {
-    return ten + mask + 0o7;
-}
-```
-
-Erwartet:
-
-- `0b1010 -> 10`
-- `0xFF -> 255`
-- `0o7 -> 7`
-
-Vor dem Fix:
-
-```text
-InvalidIntLiteral("0b1010")
-InvalidIntLiteral("0x10")
-```
-
-Aktuell:
-
-- `parse_int_literal` verarbeitet Dezimal, `0x`, `0b` und `0o`.
-- `gen_intliteral` und `eval_const_expr` verwenden dieselbe Parser-Funktion.
-
-Regressionstests:
-
-```text
-ir_codegen_semantics_tests::prefixed_integer_literals_work_in_globals_consts_and_expressions
-pipeline_regression_tests::bug_regression_prefixed_integer_literals_reach_ir_as_values
-```
-
-Umgesetzt:
-
-- Gemeinsame Integer-Parser-Funktion fuer Dezimal, `0x`, `0b`, `0o`.
-- In `gen_intliteral` und `eval_const_expr` verwenden.
-
-### Bug 4: Shadowing-Aufloesung bevorzugt `const`/`global` vor lokalen Bindings
+## Bug 2: Lokales Shadowing von `const`/`global` funktioniert nicht korrekt
 
 Prioritaet: Hoch
-Bereich: Semantik/Symbol Resolution
-Beispiel: `examples/bugs/bug_nr_2_local_variable_shadowed_by_const_on_read.ry`
-
-Gueltige Testsemantik:
-
-- Shadowing ist erlaubt.
-- Ein lokales Binding muss bei Namensauflösung Vorrang vor aeusseren Bindings, Globals und Constants haben.
+Bereich: Namensaufloesung/Scopes
 
 Minimales Beispiel:
 
@@ -266,117 +118,93 @@ fn main() int {
 
 Erwartet:
 
-- `return x` liest das lokale `x` und returned `2`.
+- Shadowing ist erlaubt.
+- `return x` liest das lokale Binding und returned `2`.
+- Nach Verlassen eines inneren Blocks gilt wieder das aeussere Binding.
 
 Tatsaechlich:
 
-- Codegen liest aktuell die Konstante `x` und returned `1`.
-
-Aktive Tests:
-
-```text
-ir_codegen_semantics_tests::local_shadowing_of_global_const_reads_the_local_binding
-pipeline_regression_tests::bug_regression_local_shadowing_must_resolve_to_the_local_binding_not_the_const
-```
+- `gen_let` lehnt lokale Variablen ab, wenn bereits ein `const` oder `global` mit demselben Namen existiert.
+- Zusaetzlich sucht `gen_variable` aktuell zuerst in `module.constants`, danach in `module.globals` und erst danach in lokalen Scopes.
+- Selbst wenn `gen_let` Shadowing zulassen wuerde, wuerde ein lokales Binding beim Lesen hinter `const`/`global` verlieren.
 
 Fix-Richtung:
 
-- Lookup-Reihenfolge korrigieren: lokale Scopes zuerst, dann global/const.
-- Gleiche Namen in inneren Scopes duerfen unterschiedliche Adressen/Temps behalten.
+- Lokale Scopes zuerst aufloesen, danach `const` und `global`.
+- Shadowing innerhalb innerer Scopes erlauben.
+- Nur doppelte Namen im selben Scope verbieten.
 
-### Bug 5: `operator []` prueft Argumenttypen nicht
-
-Status: Gefixt.
+## Bug 3: `while` und `loop` sind als normale Statements nicht stabil
 
 Prioritaet: Hoch
-Bereich: Operator-Overloads/Type Checking
+Bereich: Parser/IR-Codegen/Kontrollfluss
 
 Minimales Beispiel:
 
 ```source
-struct Box {
-    value: int,
-    fn operator [] get(this, index: int) int {
-        return this.value + index;
+fn main(limit: int) int {
+    let x: int = 0;
+    while x < limit {
+        x += 1;
+    }
+    return x;
+}
+```
+
+Erwartet:
+
+- `while condition { ... }` und `loop { ... }` koennen wie normale Kontrollfluss-Statements ohne Semikolon verwendet werden.
+- Break/continue funktionieren innerhalb der Schleife.
+- Der IR-Codegen erzeugt terminierte Condition-, Body- und End-Blocks.
+
+Tatsaechlich:
+
+- `While` und `Loop` sind aus `is_statement_start` auskommentiert.
+- Der Parser behandelt sie als Expression-Statements und erwartet danach ein Semikolon.
+- Beispiele wie `examples/current_features.ry` schlagen deshalb bereits im Parser fehl.
+- `gen_loop` und `gen_while` in `codegen/expr.rs` enthalten `todo!()` und wuerden bei erreichter Codegen-Stelle panicken.
+
+Fix-Richtung:
+
+- Entscheiden und dann konsistent umsetzen: Schleifen als Statements oder echte Expressions mit sauberem Blockwert.
+- Fuer den aktuellen Test-/Beispielvertrag: `while` und `loop` wieder als Statement-Starts behandeln.
+- `gen_while` und `gen_loop` ohne Panic implementieren.
+
+## Bug 4: `loop { return ... }` in nicht-void Funktionen ist nicht sauber abgedeckt
+
+Prioritaet: Hoch
+Bereich: Kontrollfluss/Terminatoren
+
+Minimales Beispiel:
+
+```source
+fn main() int {
+    loop {
+        return 1;
     }
 }
-
-fn main() int {
-    let b: Box = Box { value: 1 };
-    return b[true];
-}
 ```
 
 Erwartet:
 
-- Fehler, weil der Index `int` sein muss.
+- Das Programm ist gueltig, weil jeder erreichbare Pfad returned.
+- Es wird kein erreichbarer, unterminierter Endblock erzeugt.
 
-Vor dem Fix:
+Tatsaechlich:
 
-- Codegen erzeugt einen Call `Box_get(..., Bool)` und akzeptiert falsche IR.
+- Der Parser behandelt `loop` aktuell als Expression-Statement und verlangt nach dem Block ein Semikolon, obwohl die Beispiele und Tests `loop { ... }` als normales Statement verwenden.
+- Wenn der Codegen fuer `loop` erreicht wird, landet er in `gen_loop` bei `todo!()` und panickt.
+- Der aktive Testvertrag erwartet, dass dieser Fall gueltiges, voll terminiertes IR erzeugt.
 
-Aktuell:
+Fix-Richtung:
 
-- Der `PostFixOp::Brackets`-Pfad vergleicht `lhs`- und Index-Typ gegen `func_sig.params`.
-- Ein falscher Index-Typ fuehrt zu `CodegenError::MismatchedTypes`.
+- `loop_end` nur erzeugen, wenn er erreichbar ist.
+- Alternativ Reachability in `finish_blocks` korrekt berechnen, bevor `MissingTerminator` gemeldet wird.
 
-Regressionstest:
-
-```text
-ir_codegen_semantics_tests::index_operator_overloads_check_index_argument_types
-```
-
-Umgesetzt:
-
-- Im `PostFixOp::Brackets`-Pfad dieselbe Argumentanzahl- und Typpruefung wie bei normalen Calls und Method-Calls anwenden.
-
-### Bug 6: Ungueltige `::`-Syntax panickt im Parser
-
-Status: Gefixt.
-
-Prioritaet: Hoch
-Bereich: Parser/Fehlerbehandlung
-Beispiel: `examples/bugs/bug_nr_7_invalid_coloncolon_syntax_panics_parser.ry`
-
-Minimales Beispiel:
-
-```source
-fn main() {
-    a::;
-}
-```
-
-Erwartet:
-
-- `ParseError`, keine Panic.
-
-Vor dem Fix:
-
-```text
-not implemented
-```
-
-Aktuell:
-
-- Der alte `ColonColon`-Postfix-Arm mit `unimplemented!()` ist deaktiviert.
-- Malformed `a::;` bleibt nach `a` stehen und faellt regulär in einen `ParseError`.
-
-Regressionstests:
-
-```text
-parser_ast_semantics_tests::malformed_double_colon_syntax_returns_parse_error_without_panic
-parser_ast_semantics_tests::malformed_parser_inputs_return_errors_instead_of_panicking
-```
-
-Umgesetzt:
-
-- Den `TokenKind::ColonColon`-Postfix-Arm bis Turbofish-Implementierung mit einem normalen `ParseError` ersetzen.
-
-### Bug 7: Doppelte Parameter, Struct-Felder und Variant-Cases werden akzeptiert
+## Bug 5: Doppelte Namen werden nicht frueh und konsistent abgelehnt
 
 Prioritaet: Mittel
 Bereich: Parser/Semantik
-Beispiel: `examples/bugs/bug_nr_8_duplicate_params_fields_and_variant_cases_accepted.ry`
 
 Minimale Beispiele:
 
@@ -388,149 +216,26 @@ variant V { A, A }
 
 Erwartet:
 
-- Duplicate-Fehler in derselben Parameterliste, demselben Struct und derselben Variant.
+- Doppelte Parameter in derselben Parameterliste werden abgelehnt.
+- Doppelte Felder im selben Struct werden abgelehnt.
+- Doppelte Cases in derselben Variant werden abgelehnt.
+- Der Fehler entsteht deterministisch in Parser oder Semantik-Pass, bevor spaeterer Codegen Seiteneffekte erzeugt.
 
 Tatsaechlich:
 
-- Parser akzeptiert die Konstrukte.
-
-Aktiver Test:
-
-```text
-parser_ast_semantics_tests::duplicate_parameters_fields_and_variant_cases_are_semantic_errors
-```
+- Der Parser akzeptiert diese Konstrukte.
+- Einige Duplikate werden spaeter im Codegen entdeckt, aber nicht konsistent frueh.
+- Der Parser-Testvertrag erwartet aktuell `parse_items(...).is_err()`.
 
 Fix-Richtung:
 
-- Beim Parsen oder in einem Semantik-Pass pro Namensraum ein `HashSet` fuehren.
+- Pro Namensraum beim Parsen oder in einem expliziten Semantik-Pass ein `HashSet` fuehren.
+- Fehlerart fuer Duplicate-Parameter, Duplicate-Fields und Duplicate-Variant-Cases klar trennen.
 
-### Bug 8: `this` wird an falscher Parameterposition akzeptiert
-
-Status: Gefixt.
-
-Prioritaet: Mittel
-Bereich: Parser/Semantik/Method-Calls
-Beispiel: `examples/bugs/bug_nr_9_this_parameter_position_in_method_is_inconsistent.ry`
-
-Gueltige Testsemantik:
-
-- Methoden ohne `this` sind statisch.
-- Instanzmethoden duerfen `this` verwenden, aber nur als erster Parameter.
-
-Minimales Beispiel:
-
-```source
-struct S {
-    x: int,
-    fn bad(value: int, this) int {
-        return value;
-    }
-}
-```
-
-Erwartet:
-
-- Parse-/Semantikfehler, weil `this` nicht an Position 0 steht.
-
-Vor dem Fix:
-
-- Parser akzeptiert `this` nach anderen Parametern.
-
-Aktuell:
-
-- `this` wird nur im speziellen Parameterpfad akzeptiert.
-- Nach einem normalen Parameter erwartet der Parser wieder `Ident`; `TokenKind::This` an Position > 0 erzeugt einen Parse-Fehler.
-
-Regressionstests:
-
-```text
-parser_ast_semantics_tests::this_parameter_is_only_valid_as_first_method_parameter
-pipeline_regression_tests::bug_regression_method_this_parameter_position_is_validated_before_codegen_call_mismatch
-```
-
-Umgesetzt:
-
-- Parser/Semantik muss `this` ausserhalb von Position 0 ablehnen.
-
-### Bug 9: Unicode-Spans und CLI-Token-Slices
-
-Status: Teilweise gefixt.
-
-Prioritaet: Mittel
-Bereich: Lexer/Diagnostics/CLI
-Beispiel: `examples/bugs/bug_nr_10_unicode_token_spans_are_wrong.ry`
-
-Minimales Beispiel:
-
-```source
-fn main() {
-    let c: char = 'ä';
-    let s: string = "Grüße";
-}
-```
-
-Erwartet:
-
-- Unicode-Inhalte sind in Char-/String-Literalen erlaubt.
-- Token-Spans rekonstruieren die korrekten Source-Slices unter dem aktuellen char-index-basierten Span-Kontrakt.
-- `--emit-tokens` verrutscht oder panickt nicht.
-
-Tatsaechlich:
-
-- Der Span-Test rekonstruiert fuer das Char-Literal nach bisheriger Beobachtung `"ä'"` statt `"'ä'"`.
-- CLI-Token-Ausgabe fuer Unicode-Inhalte ist gefixt; der CLI-Regressionstest ist jetzt gruen.
-
-Tests und Status:
-
-```text
-lexer_semantics_tests::token_spans_reconstruct_unicode_literal_source_slices                  noch durch rython_to_ir-Buildblocker verdeckt
-rython_cli_tests::emit_tokens_handles_unicode_literal_contents_without_unicode_identifiers     gruen
-```
-
-Fix-Richtung:
-
-- Span-Laengen fuer Literale nach dem bestehenden Projektvertrag konsistent berechnen.
-- CLI darf String-Slices nicht mit ungueltigen Char-/Byte-Index-Mischungen bilden. Dieser Teil ist umgesetzt: `emit_tokens` baut die Ausgabe ueber `content.chars().skip(...).take(...)`.
-
-### Bug 10: `and` und `or` haben keine Short-Circuit-IR
-
-Prioritaet: Hoch
-Bereich: Codegen/IR-Kontrollfluss
-Beispiel: `examples/bugs/bug_nr_11_short_circuit_and_or_lowered_eagerly.ry`
-
-Minimales Beispiel:
-
-```source
-fn rhs() bool { return true; }
-fn main(left: bool) bool { return left and rhs(); }
-```
-
-Erwartet:
-
-- `and` und `or` werden als Control-Flow mit Branches lowering.
-- Die rechte Seite wird nur ausgewertet, wenn die Sprache das verlangt.
-
-Tatsaechlich:
-
-- Codegen erzeugt eager `Binary And`/`Binary Or` und wertet beide Seiten aus.
-
-Aktive Tests:
-
-```text
-ir_codegen_semantics_tests::short_circuit_and_is_lowered_to_control_flow_not_eager_binary_and
-ir_codegen_semantics_tests::short_circuit_or_is_lowered_to_control_flow_not_eager_binary_or
-```
-
-Fix-Richtung:
-
-- `and`/`or` im Expr-Codegen gesondert behandeln.
-- Branch-Blocks fuer RHS-Auswertung und Merge erzeugen.
-
-### Bug 11: Parser-only Feature `any` panickt im IR-Codegen
+## Bug 6: Parser-only Feature `any` panickt im IR-Codegen
 
 Prioritaet: Mittel
 Bereich: Unsupported-Feature-Handling
-Beispiel: `examples/bugs/bug_nr_12_any_trait_type_codegen_panics.ry`
 
 Minimales Beispiel:
 
@@ -542,211 +247,82 @@ fn main(value: any Display) {
 
 Erwartet:
 
-- Solange `any` nicht IR-unterstuetzt ist, muss Codegen sauber mit einem `CodegenError` fehlschlagen.
+- Solange `any` nicht IR-unterstuetzt ist, muss Codegen sauber mit `CodegenError` fehlschlagen.
+- Unsupported Parser-Features duerfen nicht panicken.
 
 Tatsaechlich:
 
-- `convert_to_ir_type(Type::AnyTrait(_))` erreicht `todo!()` und panickt.
-
-Aktiver Test:
-
-```text
-ir_codegen_semantics_tests::unsupported_parser_only_features_fail_cleanly_during_ir_codegen
-```
+- `convert_to_ir_type(Type::AnyTrait(_))` erreicht `todo!()`.
+- Dadurch panickt der Codegen statt einen Fehlerwert zurueckzugeben.
 
 Fix-Richtung:
 
-- Eigene Fehlerart fuer unsupported Features einfuehren oder vorhandene `InvalidItem`/`UnknownType` konsistent verwenden.
+- `CodegenError::UnsupportedFeature(...)` oder eine passende vorhandene Fehlerart verwenden.
+- Dieselbe Regel fuer Generics, Traits, Impl und andere Parser-only Features anwenden.
 
-### Bug 12: Malformed Float-Exponents werden nicht als Lexer-Fehler erkannt
+## Bug 7: Malformed Float-Exponents werden als getrennte Tokens lexed
 
 Prioritaet: Mittel
 Bereich: Lexer/Fehlerqualitaet
-Beispiel: `examples/bugs/bug_nr_13_malformed_float_exponent_is_not_lex_error.ry`
 
-Minimales Beispiel:
+Minimale Beispiele:
 
 ```source
-fn main() float {
-    return 1e;
-}
+1e
+1e+
+1e-
+2.5e+
 ```
 
 Erwartet:
 
-- `1e`, `1e+`, `1e-` und aehnliche Formen werden als ein `InvalidNumber`-Lexerfehler erkannt.
+- Diese Formen ergeben jeweils einen `LexingError::InvalidNumber`.
+- Der Lexer behandelt sie als fehlerhafte Zahl, nicht als mehrere gueltige Tokens.
 
 Tatsaechlich:
 
-- Lexer tokenisiert `1e` als `1` und Identifier `e`; der Fehler wird erst im Parser sichtbar.
-
-Aktiver Test:
-
-```text
-lexer_semantics_tests::malformed_float_exponents_report_number_errors_instead_of_split_tokens
-```
+- `1e` wird als `Int("1")` plus `Ident("e")` tokenisiert.
+- Der eigentliche Fehler erscheint dadurch erst spaeter im Parser und ist weniger praezise.
 
 Fix-Richtung:
 
-- Wenn nach einer Zahl `e`/`E` folgt, muss der Lexer exponentielle Notation entweder vollstaendig validieren oder als `InvalidNumber` melden.
+- Wenn direkt nach einer Zahl `e` oder `E` folgt, muss der Exponent komplett validiert oder als `InvalidNumber` gemeldet werden.
 
-### Bug 13: CLI `--emit-ir` schreibt auf stdout statt stderr
+## Bug 8: `--emit-ir` schreibt nicht auf denselben Stream wie andere Emit-Ausgaben
 
 Prioritaet: Niedrig bis Mittel
-Bereich: CLI/Manager-Ausgabe
+Bereich: CLI/Manager
 
-CLI-Usage sagt:
+Erwartet laut CLI-Hilfe:
 
 ```text
 --emit-ir          Print IR module to stderr
 ```
 
-Erwartet:
-
-- Alle `--emit-*` Debug-Ausgaben gehen konsistent nach stderr.
-
 Tatsaechlich:
 
 - Tokens und AST gehen nach stderr.
-- IR geht ueber `print_ir` nach stdout.
-
-Aktiver Test:
-
-```text
-rython_cli_tests::emit_tokens_ast_and_ir_print_stable_markers_to_stderr
-```
+- IR wird ueber `claude_print_ir::print_ir(&module)` nach stdout geschrieben.
+- Der Test `emit_tokens_ast_and_ir_print_stable_markers_to_stderr` schlaegt fehl, weil stderr den Marker `==== IR Module ====` nicht enthaelt.
 
 Fix-Richtung:
 
-- `emit_ir` im Manager mit `eprint!`/`eprintln!` oder einem stream-parametrisierten Formatter ausgeben.
+- IR-Formatierung als String verwenden und mit `eprint!`/`eprintln!` ausgeben.
+- Alternativ `print_ir` stream-parametrisieren.
 
-## Gefixte oder entfernte Bug-Skripte
+## Gefixte oder entfernte Alt-Bugs
 
-### Gefixt: Field-Access auf Struct-Rvalues und Call-Ergebnissen
+Nicht mehr als aktive Bugs fuehren:
 
-Ehemaliges Skript:
-
-```text
-examples/bugs/bug_nr_5_field_access_on_struct_rvalue_fails.ry
-```
-
-Grund:
-
-- `make().x` und `Point { x: 1 }.x` erzeugen jetzt `GetFieldAddr` direkt auf der Struct-Basisadresse.
-- Der falsche extra Pointer-Load wurde entfernt.
-
-### Gefixt: Prefixed Integer-Literale
-
-Ehemaliges Skript:
-
-```text
-examples/bugs/bug_nr_3_prefixed_integer_literal_rejected_by_codegen.ry
-```
-
-Grund:
-
-- `0x`, `0b` und `0o` werden im Expr-Codegen und Const-Evaluator geparst.
-
-### Gefixt: `operator []`-Index-Typpruefung
-
-Grund:
-
-- Der Bracket-Operator prueft jetzt die Argumenttypen gegen die Operator-Signatur.
-
-### Gefixt: malformed `::` ohne Parser-Panic
-
-Ehemaliges Skript:
-
-```text
-examples/bugs/bug_nr_7_invalid_coloncolon_syntax_panics_parser.ry
-```
-
-Grund:
-
-- Der Parser liefert fuer `a::;` einen normalen Fehler statt zu panicken.
-
-### Gefixt: `this` nur als erster Methodenparameter
-
-Ehemaliges Skript:
-
-```text
-examples/bugs/bug_nr_9_this_parameter_position_in_method_is_inconsistent.ry
-```
-
-Grund:
-
-- `this` nach normalen Parametern wird vom Parser abgelehnt.
-
-### Entfernt: binaerer Operator-Overload-RHS-Typ
-
-Ehemaliges Skript:
-
-```text
-examples/bugs/bug_nr_1_operator_overload_argument_type_not_checked.ry
-```
-
-Grund:
-
-- Der urspruengliche Fall `b + true` bei `rhs: int` wird inzwischen korrekt als `MismatchedTypes(I64, Bool)` abgelehnt.
-- Aktive Tests bleiben:
-
-```text
-ir_codegen_semantics_tests::operator_overloads_check_argument_types_like_normal_calls
-pipeline_regression_tests::bug_regression_operator_overload_mismatched_rhs_does_not_emit_bad_call_ir
-```
-
-Der verwandte `operator []`-Bug ist inzwischen ebenfalls gefixt.
-
-### Entfernt: `null`
-
-Ehemaliges Skript:
-
-```text
-examples/bugs/bug_nr_4_null_not_assignable_to_struct_pointer_type.ry
-```
-
-Grund:
-
+- Field-Access auf Struct-Rvalues und Call-Ergebnissen funktioniert fuer `make().x` und `Point { x: 1 }.x`.
+- Prefixed Integer-Literale `0x`, `0b`, `0o` werden in Expr-Codegen und Const-Eval verarbeitet.
+- `operator []` prueft den Index-Typ gegen die Operator-Signatur.
+- Malformed `a::;` liefert Parserfehler statt Panic.
+- `this` nach anderen Methodenparametern wird vom Parser abgelehnt.
 - `null` ist kein Rython-Feature mehr.
-- `null` wird nur noch negativ getestet:
+- CLI-Token-Ausgabe fuer Unicode-Literale wie `'ä'` und `"Grüße"` ist stabil.
 
-```text
-ir_codegen_semantics_tests::negative_codegen_reports_specific_name_type_and_struct_literal_errors
-manager_tests::run_rejects_removed_null_expression_during_ir_codegen
-rython_cli_tests::removed_null_expression_is_reported_as_ir_error
-```
+## Zu verifizieren, sobald der Test-Build-Blocker weg ist
 
-## Aktive Bug-Skripte
-
-```text
-examples/bugs/bug_nr_2_local_variable_shadowed_by_const_on_read.ry
-examples/bugs/bug_nr_6_loop_return_creates_unterminated_unreachable_end_block.ry
-examples/bugs/bug_nr_8_duplicate_params_fields_and_variant_cases_accepted.ry
-examples/bugs/bug_nr_10_unicode_token_spans_are_wrong.ry
-examples/bugs/bug_nr_11_short_circuit_and_or_lowered_eagerly.ry
-examples/bugs/bug_nr_12_any_trait_type_codegen_panics.ry
-examples/bugs/bug_nr_13_malformed_float_exponent_is_not_lex_error.ry
-```
-
-Die Nummern behalten historische Luecken, damit alte Referenzen nicht still umgedeutet werden.
-
-Hinweis Stand 2026-05-23: Im Arbeitsbaum existiert aktuell kein `examples/bugs/`-Verzeichnis. Die obige Liste beschreibt die historischen/gewollten Bug-Skripte, nicht vorhandene Dateien.
-
-## Nicht als Bug gezaehlt
-
-- Assembly-Backend, Linken und Programmausfuehrung sind nicht Teil des aktuellen Testziels.
-- `-o` erzeugt aktuell kein Binary; das ist fuer Source->IR nicht als Fehler bewertet.
-- Programm-Exit-Codes werden nicht propagiert, solange der Backend-/Run-Pfad deaktiviert ist.
-- Imports, Traits, Trait-Implementations, Generics, `any`, `for` und top-level operator overloads sind aktuell hoechstens Parser-Features. Erfolgreicher IR-Codegen dafuer ist noch nicht erwartet; sauberes Fehlschlagen ist aber erwartet.
-- Vollstaendige Runtime-/Builtin-Semantik fuer String- und List-Literale ist noch nicht Teil der Bewertung.
-
-## Naechste sinnvolle Fix-Reihenfolge
-
-1. Testvertrag fuer `and`/`or`/`not` klaeren und `rython_to_ir` wieder kompilierbar machen.
-2. Lokale Scope-Lookup-Reihenfolge korrigieren, damit Shadowing semantisch stimmt.
-3. Duplicate-Checks fuer Parameter, Struct-Felder und Variant-Cases implementieren.
-4. Short-Circuit-IR fuer `and`/`or` implementieren, falls ausgeschriebene Bool-Operatoren Teil der Sprache bleiben.
-5. `any` und andere unsupported Parser-Features in saubere `CodegenError`s umwandeln.
-6. Unicode-Span-Berechnung stabilisieren.
-7. Malformed Float-Exponents als Lexerfehler melden.
-8. `--emit-ir` auf denselben Debug-Ausgabestream wie Tokens/AST bringen.
+- Unicode-Span-Test fuer Char-/String-Literale im `rython_to_ir`-Testcrate erneut ausfuehren. Die CLI-Ausgabe ist bereits gruen, der eigentliche Lexer-Test ist aktuell durch den Build-Blocker verdeckt.
+- Alle IR-Codegen-Tests nach Umstellung von `and/or` auf `&&/||` erneut ausfuehren; erst danach ist die genaue Zahl der roten Runtime-Semantiktests belastbar.
