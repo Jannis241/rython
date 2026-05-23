@@ -1,6 +1,6 @@
 ## Zusammenfassung
 
-Stand: Testset nach Erweiterung um IR-Verifier, exakte IR-Erwartungen, Short-Circuit-Regressionen, Parser-No-Panic-Faelle und aktualisierte Sprachentscheidungen.
+Stand: 2026-05-23, nach erneutem Lauf der aktiven Cargo-Tests.
 
 Bewerteter Compilerpfad:
 
@@ -10,8 +10,9 @@ Rython source -> Lexer -> Parser/AST -> IR
 
 Der Assembly-/Link-/Run-Pfad ist weiterhin nicht Teil dieser Bewertung.
 
-Aktuell sichtbar rote Bugs im aktiven Rython->IR-Pfad:
+Aktuell sichtbar:
 
+- Der `rython_to_ir`-Test-Build bricht bereits beim Kompilieren ab, weil `lexer_semantics_tests::lexes_supported_keywords` die Token-Varianten `TokenKind::And`, `TokenKind::Or` und `TokenKind::Not` erwartet, diese Varianten in `lexer.rs` aber auskommentiert sind. Dadurch laufen die fachlichen Rython->IR-Regressionstests aktuell nicht bis zur Ausfuehrung.
 - Field-Access auf Struct-Rvalues und Call-Ergebnissen funktioniert im Codegen nicht.
 - `loop { return ... }` in nicht-void Funktionen erzeugt einen unerreichbaren, aber unterminierten `loop_end` Block.
 - Prefixed Integer-Literale (`0x`, `0b`, `0o`) lexen korrekt, werden aber im Codegen/Const-Evaluator nicht geparst.
@@ -41,13 +42,53 @@ cargo test -p manager
 cargo test -p rython_cli
 ```
 
-Ergebnis nach Test-Erweiterung:
+Ergebnis am 2026-05-23:
 
 - `cargo test -p manager`: gruen, 14/14 Tests.
 - `cargo test -p rython_cli`: rot, 11/13 Tests gruen.
-- `cargo test -p rython_to_ir`: rot, 56/73 Tests gruen.
+- `cargo test -p rython_to_ir`: rot vor Testausfuehrung; Testcrate kompiliert nicht wegen fehlender `TokenKind::And`, `TokenKind::Or`, `TokenKind::Not`.
 
-Die roten Tests sind absichtlich fachliche Regressionstests. Sie wurden nicht an das aktuelle fehlerhafte Verhalten angepasst.
+Die roten bzw. nicht kompilierenden Tests sind absichtlich fachliche Regressionstests. Sie wurden nicht an das aktuelle fehlerhafte Verhalten angepasst.
+
+Aktuelle `rython_cli`-Fehler:
+
+```text
+rython_cli_tests::emit_tokens_ast_and_ir_print_stable_markers_to_stderr
+rython_cli_tests::emit_tokens_handles_unicode_literal_contents_without_unicode_identifiers
+```
+
+Aktueller `rython_to_ir`-Buildfehler:
+
+```text
+error[E0599]: no variant or associated item named `And` found for enum `TokenKind`
+error[E0599]: no variant or associated item named `Or` found for enum `TokenKind`
+error[E0599]: no variant or associated item named `Not` found for enum `TokenKind`
+```
+
+Bis dieser Buildfehler behoben ist, ist die alte Zahl `56/73 Tests gruen` nicht mehr belastbar.
+
+## Vorgelagerter Test-Build-Blocker
+
+### Build-Blocker 0: Keyword-Tests erwarten `and`/`or`/`not` als eigene Token
+
+Prioritaet: Sehr hoch  
+Bereich: Lexer/Testvertrag
+
+Aktueller Test:
+
+```text
+lexer_semantics_tests::lexes_supported_keywords
+```
+
+Tatsaechlich:
+
+- `TokenKind::{And, Or, Not}` sind in `crates/rython_to_ir/src/lexer.rs` auskommentiert.
+- Die Tests referenzieren diese Varianten direkt und verhindern dadurch den kompletten `rython_to_ir`-Testlauf.
+
+Entscheidung noetig:
+
+- Entweder `and`, `or` und `not` als Keyword-Token wieder einfuehren und Parser/Codegen darauf ausrichten.
+- Oder den Testvertrag auf die aktuell verwendeten Operator-Token `&&`, `||`, `!` zuruecknehmen und die Sprachentscheidung zu ausgeschriebenen Bool-Operatoren entfernen.
 
 ## Gueltige Sprachentscheidungen fuer Tests
 
@@ -598,6 +639,8 @@ examples/bugs/bug_nr_13_malformed_float_exponent_is_not_lex_error.ry
 
 Die Nummern behalten historische Luecken, damit alte Referenzen nicht still umgedeutet werden.
 
+Hinweis Stand 2026-05-23: Im Arbeitsbaum existiert aktuell kein `examples/bugs/`-Verzeichnis. Die obige Liste beschreibt die historischen/gewollten Bug-Skripte, nicht vorhandene Dateien.
+
 ## Nicht als Bug gezaehlt
 
 - Assembly-Backend, Linken und Programmausfuehrung sind nicht Teil des aktuellen Testziels.
@@ -608,10 +651,12 @@ Die Nummern behalten historische Luecken, damit alte Referenzen nicht still umge
 
 ## Naechste sinnvolle Fix-Reihenfolge
 
-1. Parser-Panic bei `::` entfernen, weil das ein klarer Stabilitaetsfehler ist.
-2. Integer-Prefix-Parsing zentralisieren, weil Lexer und Sprachsyntax das Feature bereits akzeptieren.
-3. Lokale Scope-Lookup-Reihenfolge korrigieren, damit Shadowing semantisch stimmt.
-4. `operator []` an normale Call-Typpruefung angleichen.
-5. Short-Circuit-IR fuer `and`/`or` implementieren.
-6. `any` und andere unsupported Parser-Features in saubere `CodegenError`s umwandeln.
-7. Unicode-Span-Berechnung und CLI-Token-Slicing stabilisieren.
+1. Testvertrag fuer `and`/`or`/`not` klaeren und `rython_to_ir` wieder kompilierbar machen.
+2. Parser-Panic bei `::` entfernen, weil das ein klarer Stabilitaetsfehler ist.
+3. Integer-Prefix-Parsing zentralisieren, weil Lexer und Sprachsyntax das Feature bereits akzeptieren.
+4. Lokale Scope-Lookup-Reihenfolge korrigieren, damit Shadowing semantisch stimmt.
+5. `operator []` an normale Call-Typpruefung angleichen.
+6. Short-Circuit-IR fuer `and`/`or` implementieren, falls ausgeschriebene Bool-Operatoren Teil der Sprache bleiben.
+7. `any` und andere unsupported Parser-Features in saubere `CodegenError`s umwandeln.
+8. Unicode-Span-Berechnung und CLI-Token-Slicing stabilisieren.
+9. `--emit-ir` auf denselben Debug-Ausgabestream wie Tokens/AST bringen.
