@@ -120,14 +120,11 @@ pub fn run(file_name: &str, options: &BuildOptions) -> Result<i32, BuildError> {
                 break;
             }
 
-            let start = token.span.start_char_idx;
-            let end = token.span.start_char_idx as i32 + token.span.length;
-
-            let slice = if start < end as usize {
-                content[start..end as usize].to_string()
-            } else {
-                content[end as usize..start].to_string()
-            };
+            let start = token.span.start_char_idx as i32;
+            let end = start + token.span.length;
+            let lo = start.min(end).max(0) as usize;
+            let hi = start.max(end).max(0) as usize;
+            let slice: String = content.chars().skip(lo).take(hi - lo).collect();
 
             eprintln!(
                 "[token] {:<16} | {:<16} | {:<9} | {:<9} | {}",
