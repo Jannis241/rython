@@ -218,6 +218,7 @@ impl IrGenerator {
         field_name: &String,
     ) -> Result<(TempId, IrType), CodegenError> {
         let (lv_addr, lv_ty) = self.gen_left_value_addr(object)?;
+
         let (base_addr, struct_ty) = match &lv_ty {
             IrType::Pointer(_) => {
                 let loaded = self.next_temp_id();
@@ -289,6 +290,15 @@ impl IrGenerator {
                 }
                 Err(CodegenError::UnknownVariable(name.clone()))
             }
+            Expr::StructLiteral {
+                struct_name,
+                arguments,
+            } => self.gen_struct_literal(struct_name, arguments),
+            Expr::Call {
+                callee,
+                type_args,
+                arguments,
+            } => self.gen_call(callee, type_args, arguments),
             Expr::FieldAccess { object, field_name } => self.gen_field_addr(object, field_name),
             Expr::Grouping(inner) => self.gen_left_value_addr(inner),
             other => Err(CodegenError::InvalidExpr(other.clone())),

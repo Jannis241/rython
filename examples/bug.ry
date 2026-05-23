@@ -1,0 +1,9 @@
+struct Point { x: int }
+
+fn make() Point {
+    return Point { x: 41 };
+}
+
+fn main() int {
+    return make().x + Point { x: 1 }.x;
+}
