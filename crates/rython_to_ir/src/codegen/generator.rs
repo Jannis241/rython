@@ -691,9 +691,8 @@ impl IrGenerator {
     ) -> Result<(IrType, PrimitiveValue), CodegenError> {
         match expr {
             Expr::IntLiteral(s) => {
-                let val: i64 = s
-                    .parse()
-                    .map_err(|_| CodegenError::InvalidIntLiteral(s.clone()))?;
+                let val = parse_int_literal(s)
+                    .ok_or_else(|| CodegenError::InvalidIntLiteral(s.clone()))?;
                 Ok((IrType::I64, PrimitiveValue::Int(val)))
             }
             Expr::FloatLiteral(s) => {
@@ -707,6 +706,18 @@ impl IrGenerator {
             //Todo andere exprs machen die auch in ein const/ global gespeichert werden können
             other => Err(CodegenError::InvalidExpr(other.clone())),
         }
+    }
+}
+
+pub(super) fn parse_int_literal(value: &str) -> Option<i64> {
+    if let Some(hex) = value.strip_prefix("0x") {
+        i64::from_str_radix(hex, 16).ok()
+    } else if let Some(bin) = value.strip_prefix("0b") {
+        i64::from_str_radix(bin, 2).ok()
+    } else if let Some(oct) = value.strip_prefix("0o") {
+        i64::from_str_radix(oct, 8).ok()
+    } else {
+        value.parse().ok()
     }
 }
 

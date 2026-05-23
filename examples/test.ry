@@ -1,1 +1,7 @@
-let x: string = "abcdefgä";
+global x: int = 10;
+
+fn main() int {
+    x = 20;
+
+    return x;
+}

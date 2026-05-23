@@ -1077,9 +1077,8 @@ impl IrGenerator {
     fn gen_intliteral(&mut self, value: &str) -> Result<(TempId, IrType), CodegenError> {
         let temp_id = self.next_temp_id();
 
-        let val = value
-            .parse()
-            .map_err(|_| CodegenError::InvalidIntLiteral(value.to_string()))?;
+        let val = super::generator::parse_int_literal(value)
+            .ok_or_else(|| CodegenError::InvalidIntLiteral(value.to_string()))?;
         let new_const_instruction = IrInstruction::PrimitiveConst {
             temp_id,
             ty: IrType::I64,
