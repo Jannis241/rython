@@ -16,6 +16,7 @@ Weitere Todos:
         - CLI --emit-ir schreibt noch nicht auf denselben Stream wie die anderen emit-Ausgaben
         - examples/bugs Verzeichnis wieder anlegen oder Bugreport-Referenzen entfernen
     - Gefixt:
+        - CLI --emit-tokens kann Unicode-Literale wie 'ä' und "Grüße" ausgeben
         - field access auf Struct-Rvalues und Call-Ergebnissen:
             - return make().x + Point { x: 1 }.x;
         - prefix integer literal

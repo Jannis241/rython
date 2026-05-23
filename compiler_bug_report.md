@@ -16,12 +16,12 @@ Aktuell sichtbar:
 - `loop { return ... }` in nicht-void Funktionen erzeugt einen unerreichbaren, aber unterminierten `loop_end` Block.
 - Shadowing ist erlaubt, aber Namensauflösung bevorzugt aktuell `const`/`global` vor lokalen Bindings.
 - Doppelte Parameter, Struct-Felder und Variant-Cases werden akzeptiert.
-- Token-Spans und CLI-Token-Slices sind bei Unicode-Literalen falsch.
+- Token-Spans sind bei Unicode-Literalen noch fraglich/falsch; die CLI-Token-Ausgabe fuer Unicode-Literale ist inzwischen stabil.
 - `and` und `or` werden eager als Binary-IR erzeugt; gewuenscht ist Short-Circuit-Control-Flow.
 - Parser-only Features wie `any` koennen im Codegen panicken statt sauber als unsupported/invalid zu fehlschlagen.
 - Malformed Float-Exponents wie `1e` werden nicht als einzelner Lexer-Fehler erkannt.
 - CLI `--emit-ir` schreibt aktuell nicht auf denselben Stream wie die anderen Emit-Ausgaben.
-- Seit der letzten Aktualisierung wurden Field-Access auf Struct-Rvalues/Call-Ergebnissen, prefixed Integer-Literale, `operator []`-Index-Typpruefung, malformed `::` ohne Parser-Panic und `this`-Positionsvalidierung gefixt.
+- Seit der letzten Aktualisierung wurden Field-Access auf Struct-Rvalues/Call-Ergebnissen, prefixed Integer-Literale, `operator []`-Index-Typpruefung, malformed `::` ohne Parser-Panic, `this`-Positionsvalidierung und CLI-Token-Ausgabe fuer Unicode-Literale gefixt.
 
 Nicht mehr als aktive Bug-Skripte gefuehrt:
 
@@ -30,6 +30,7 @@ Nicht mehr als aktive Bug-Skripte gefuehrt:
 - `operator []` prueft den Index-Argumenttyp inzwischen gegen die Operator-Funktionssignatur.
 - `a::;` liefert einen Parserfehler statt durch `unimplemented!()` zu panicken.
 - `this` nach anderen Methodenparametern wird vom Parser abgelehnt.
+- `--emit-tokens` rekonstruiert Unicode-Literal-Slices ueber `content.chars()` und gibt `Grüße`/`'ä'` stabil aus.
 - Alter binaerer Operator-Overload-Bug (`b + true` bei `rhs: int`) ist fuer normale binaere Operatoren gefixt.
 - `null` wurde vollstaendig aus Rython entfernt. Das alte `null`-Bug-Skript wurde geloescht; `null` existiert nur noch in negativen Tests.
 
@@ -46,7 +47,7 @@ cargo test -p rython_cli
 Ergebnis am 2026-05-23:
 
 - `cargo test -p manager`: gruen, 14/14 Tests.
-- `cargo test -p rython_cli`: rot, 11/13 Tests gruen.
+- `cargo test -p rython_cli`: rot, 12/13 Tests gruen.
 - `cargo test -p rython_to_ir`: rot vor Testausfuehrung; Testcrate kompiliert nicht wegen fehlender `TokenKind::And`, `TokenKind::Or`, `TokenKind::Not`.
 
 Die roten bzw. nicht kompilierenden Tests sind absichtlich fachliche Regressionstests. Sie wurden nicht an das aktuelle fehlerhafte Verhalten angepasst.
@@ -55,7 +56,6 @@ Aktuelle `rython_cli`-Fehler:
 
 ```text
 rython_cli_tests::emit_tokens_ast_and_ir_print_stable_markers_to_stderr
-rython_cli_tests::emit_tokens_handles_unicode_literal_contents_without_unicode_identifiers
 ```
 
 Aktueller `rython_to_ir`-Buildfehler:
@@ -452,7 +452,9 @@ Umgesetzt:
 
 - Parser/Semantik muss `this` ausserhalb von Position 0 ablehnen.
 
-### Bug 9: Unicode-Spans und CLI-Token-Slices sind falsch
+### Bug 9: Unicode-Spans und CLI-Token-Slices
+
+Status: Teilweise gefixt.
 
 Prioritaet: Mittel
 Bereich: Lexer/Diagnostics/CLI
@@ -475,20 +477,20 @@ Erwartet:
 
 Tatsaechlich:
 
-- Der Span-Test rekonstruiert fuer das Char-Literal aktuell `"ä'"` statt `"'ä'"`.
-- CLI-Token-Ausgabe kann bei Unicode-Inhalten fehlschlagen.
+- Der Span-Test rekonstruiert fuer das Char-Literal nach bisheriger Beobachtung `"ä'"` statt `"'ä'"`.
+- CLI-Token-Ausgabe fuer Unicode-Inhalte ist gefixt; der CLI-Regressionstest ist jetzt gruen.
 
-Aktive Tests:
+Tests und Status:
 
 ```text
-lexer_semantics_tests::token_spans_reconstruct_unicode_literal_source_slices
-rython_cli_tests::emit_tokens_handles_unicode_literal_contents_without_unicode_identifiers
+lexer_semantics_tests::token_spans_reconstruct_unicode_literal_source_slices                  noch durch rython_to_ir-Buildblocker verdeckt
+rython_cli_tests::emit_tokens_handles_unicode_literal_contents_without_unicode_identifiers     gruen
 ```
 
 Fix-Richtung:
 
 - Span-Laengen fuer Literale nach dem bestehenden Projektvertrag konsistent berechnen.
-- CLI darf String-Slices nicht mit ungueltigen Char-/Byte-Index-Mischungen bilden.
+- CLI darf String-Slices nicht mit ungueltigen Char-/Byte-Index-Mischungen bilden. Dieser Teil ist umgesetzt: `emit_tokens` baut die Ausgabe ueber `content.chars().skip(...).take(...)`.
 
 ### Bug 10: `and` und `or` haben keine Short-Circuit-IR
 
@@ -745,6 +747,6 @@ Hinweis Stand 2026-05-23: Im Arbeitsbaum existiert aktuell kein `examples/bugs/`
 3. Duplicate-Checks fuer Parameter, Struct-Felder und Variant-Cases implementieren.
 4. Short-Circuit-IR fuer `and`/`or` implementieren, falls ausgeschriebene Bool-Operatoren Teil der Sprache bleiben.
 5. `any` und andere unsupported Parser-Features in saubere `CodegenError`s umwandeln.
-6. Unicode-Span-Berechnung und CLI-Token-Slicing stabilisieren.
+6. Unicode-Span-Berechnung stabilisieren.
 7. Malformed Float-Exponents als Lexerfehler melden.
 8. `--emit-ir` auf denselben Debug-Ausgabestream wie Tokens/AST bringen.
