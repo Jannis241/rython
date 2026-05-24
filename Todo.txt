@@ -12,11 +12,11 @@ Als erstes:
     - Danach `cargo test -p rython_to_ir` ausfuehren und die echte Fehlerliste neu bewerten.
 
 Bugs:
-    - `&&` und `||` als Short-Circuit-Control-Flow lowern, nicht als eager `Binary And/Or`.
-    - Lokales Shadowing reparieren:
-        - `let` darf `const`/`global` in innerem Scope shadowen.
-        - Lookup-Reihenfolge: lokale Scopes zuerst, danach const/global.
-        - Doppelte Namen nur im selben Scope verbieten.
+    - Shadowing konsistent ablehnen:
+        - `let` darf keinen bereits sichtbaren Namen erneut binden (`const`, `global`, Parameter, lokales Binding im selben oder aeusseren Scope).
+        - Parameter duerfen keine sichtbaren `const`/`global`-Namen verwenden und keine anderen Parameter derselben Funktion duplizieren.
+        - `insert_variable` darf gleichnamige Eintraege nicht stillschweigend ueberschreiben.
+        - Gleichnamige lokale Variablen in unterschiedlichen Funktionen bleiben erlaubt.
     - `while` und `loop` wieder als stabile Kontrollfluss-Statements ohne erzwungenes Semikolon unterstuetzen oder den Expr-Vertrag vollstaendig umsetzen.
     - `gen_while()` implementieren.
     - `gen_loop()` implementieren.
@@ -40,7 +40,7 @@ Semantik / Frontend:
         - DuplicateParam,
         - DuplicateField,
         - DuplicateVariantCase,
-        - DuplicateLocalInSameScope.
+        - NameAlreadyVisible / ShadowingNotAllowed.
     - Parser-only Features klar von IR-unterstuetzten Features trennen.
     - Beispiele so pflegen, dass `current_features.ry` wirklich bis IR kompiliert.
     - `all_features.ry` als Parser-/Syntaxshowcase markieren und von IR-Erfolg entkoppeln.
@@ -113,11 +113,19 @@ Operatoren / Calls:
 
 Tests:
     - `rython_to_ir`-Tests wieder kompilierbar machen.
-    - Short-Circuit-Tests auf `&&` und `||` umstellen.
+    - Short-Circuit-Tests aus Bug-Regressiontests entfernen oder als optionale Optimierung markieren.
     - Tests fuer `!` als einzigen logischen Not-Operator behalten.
-    - Regressiontests fuer Shadowing, Loop/While, Any-Panic, malformed floats und CLI stderr aktiv halten.
+    - Tests, die erlaubtes Shadowing erwarten, auf Fehlererwartung umstellen.
+    - Regressiontests fuer Shadowing-Verbot, Loop/While, Any-Panic, malformed floats und CLI stderr aktiv halten.
     - Negative Tests fuer `and`, `or`, `not` als nicht unterstuetzte Operator-Syntax hinzufuegen.
     - `examples/current_features.ry` in einem Pipeline-Test gruen halten.
+
+Optimierungen / optionale Sprachentscheidungen:
+    - Entscheiden, ob `&&` und `||` spaeter garantierte Short-Circuit-Semantik bekommen sollen.
+    - Falls ja:
+        - `BinaryOp::And` und `BinaryOp::Or` vor der normalen Binary-Codegen-Logik gesondert behandeln.
+        - RHS-Block und Merge-Block erzeugen.
+        - Tests auf `&&`/`||` mit Branch-/Merge-Erwartung wieder aktivieren.
 
 Manager / CLI im IR-only Scope:
     - `--emit-ir` auf stderr fixen.

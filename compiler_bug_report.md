@@ -15,6 +15,8 @@ Geklaerte Sprachentscheidung:
 - Gueltige Bool-Operator-Syntax ist `&&`, `||` und `!`.
 - Die ausgeschriebenen Woerter `and`, `or` und `not` sind keine Rython-Operatoren.
 - Tests, Beispiele oder Bugbeschreibungen, die `and`, `or` oder `not` als Operatoren erwarten, sind veraltet.
+- Shadowing ist nicht erlaubt: ein `let`-Binding oder Parameter darf keinen bereits sichtbaren Namen erneut binden.
+- Eager-Auswertung von `&&` und `||` ist aktuell kein Korrektheitsbug. Short-Circuiting waere eine Optimierung oder eine neue explizite Sprachentscheidung.
 
 ## Aktueller Teststatus
 
@@ -69,11 +71,12 @@ Zusatzbefund:
 
 - `examples/current_features.ry`, `examples/all_features.ry` und mehrere IR-Codegen-Tests verwenden noch `and`/`or`.
 - Mit der geklaerten Syntax sind diese Quellen veraltet und muessen auf `&&`/`||` umgestellt werden.
+- IR-Codegen-Tests, die Short-Circuiting als Muss formulieren, passen nicht mehr zum aktuellen Bug-Vertrag und muessen entfernt, abgeschwaecht oder als optionale Optimierung markiert werden.
 
-## Bug 1: `&&` und `||` werden eager statt short-circuit ausgewertet
+## Nicht-Bug: `&&` und `||` werden eager ausgewertet
 
-Prioritaet: Hoch
-Bereich: IR-Codegen/Kontrollfluss
+Prioritaet: Keine aktive Bug-Prioritaet
+Bereich: IR-Codegen/Optimierung
 
 Minimales Beispiel:
 
@@ -84,23 +87,21 @@ fn main(left: bool) bool { return left && rhs(); }
 
 Erwartet:
 
-- `&&` wertet die rechte Seite nur aus, wenn die linke Seite `true` ist.
-- `||` wertet die rechte Seite nur aus, wenn die linke Seite `false` ist.
-- Das IR enthaelt Branch-/Merge-Blocks statt eines eager `Binary And` oder `Binary Or`.
+- Solange die Sprache keine Short-Circuit-Semantik garantiert, darf `&&`/`||` als normale primitive Bool-Operation gelowert werden.
+- Ein `IrInstruction::Binary { op: And/Or, ... }` ist daher kein Bug.
 
 Tatsaechlich:
 
 - `gen_binary_op` ruft zuerst `gen_expr(lhs)` und danach immer `gen_expr(rhs)` auf.
 - Danach wird fuer primitive Bool-Operatoren ein `IrInstruction::Binary { op: And/Or, ... }` erzeugt.
-- Dadurch wuerden Seiteneffekte oder Fehler in der rechten Seite auftreten, obwohl sie durch Short-Circuiting uebersprungen werden muessten.
+- Das ist unter dem aktuellen Vertrag akzeptabel.
 
-Fix-Richtung:
+Todo-Richtung:
 
-- `BinaryOp::And` und `BinaryOp::Or` vor der normalen Binary-Codegen-Logik gesondert behandeln.
-- RHS-Block und Merge-Block erzeugen.
-- Tests von `and/or` auf `&&/||` umstellen.
+- Tests, die Short-Circuiting zwingend erwarten, aus den Bug-Regressiontests entfernen oder als optionale Optimierung markieren.
+- Falls Rython spaeter garantierte Short-Circuit-Semantik bekommen soll, diese Entscheidung explizit dokumentieren und dann Branch-/Merge-Codegen implementieren.
 
-## Bug 2: Lokales Shadowing von `const`/`global` funktioniert nicht korrekt
+## Bug 1: Shadowing wird nicht konsistent abgelehnt
 
 Prioritaet: Hoch
 Bereich: Namensaufloesung/Scopes
@@ -108,33 +109,38 @@ Bereich: Namensaufloesung/Scopes
 Minimales Beispiel:
 
 ```source
-const x: int = 1;
-
 fn main() int {
-    let x: int = 2;
+    let x: int = 1;
+    {
+        let x: int = 2;
+    }
     return x;
 }
 ```
 
 Erwartet:
 
-- Shadowing ist erlaubt.
-- `return x` liest das lokale Binding und returned `2`.
-- Nach Verlassen eines inneren Blocks gilt wieder das aeussere Binding.
+- Shadowing ist nicht erlaubt.
+- `let x` im inneren Block wird abgelehnt, weil `x` bereits sichtbar ist.
+- Dasselbe gilt fuer Konflikte mit Parametern, lokalen Variablen im selben Scope sowie sichtbaren `const`/`global`-Namen.
+- Gleichnamige lokale Variablen in unterschiedlichen Funktionen bleiben erlaubt, weil die Funktions-Scope-Grenze den Namen nicht sichtbar macht.
 
 Tatsaechlich:
 
 - `gen_let` lehnt lokale Variablen ab, wenn bereits ein `const` oder `global` mit demselben Namen existiert.
-- Zusaetzlich sucht `gen_variable` aktuell zuerst in `module.constants`, danach in `module.globals` und erst danach in lokalen Scopes.
-- Selbst wenn `gen_let` Shadowing zulassen wuerde, wuerde ein lokales Binding beim Lesen hinter `const`/`global` verlieren.
+- `handle_parameters` und `insert_variable` pruefen aber nicht, ob der Name bereits in einem sichtbaren lokalen Scope existiert.
+- `insert_variable` ueberschreibt sogar gleichnamige Bindings im selben Scope stillschweigend.
+- Dadurch werden lokale Shadowing-Faelle und Parameter-Shadowing aktuell zumindest teilweise akzeptiert.
+- Bestehende Tests wie `inner_block_shadowing_is_allowed...` und `bug_regression_local_shadowing...` beschreiben den alten, falschen Vertrag.
 
 Fix-Richtung:
 
-- Lokale Scopes zuerst aufloesen, danach `const` und `global`.
-- Shadowing innerhalb innerer Scopes erlauben.
-- Nur doppelte Namen im selben Scope verbieten.
+- Beim Einfuegen von Parametern und lokalen Variablen alle sichtbaren Namen pruefen.
+- Gleichnamige `const`/`global`-, Parameter- und Lokalnamen ablehnen.
+- `insert_variable` darf nie stillschweigend ueberschreiben.
+- Tests, die erlaubtes Shadowing erwarten, auf Fehlererwartung umstellen.
 
-## Bug 3: `while` und `loop` sind als normale Statements nicht stabil
+## Bug 2: `while` und `loop` sind als normale Statements nicht stabil
 
 Prioritaet: Hoch
 Bereich: Parser/IR-Codegen/Kontrollfluss
@@ -170,7 +176,7 @@ Fix-Richtung:
 - Fuer den aktuellen Test-/Beispielvertrag: `while` und `loop` wieder als Statement-Starts behandeln.
 - `gen_while` und `gen_loop` ohne Panic implementieren.
 
-## Bug 4: `loop { return ... }` in nicht-void Funktionen ist nicht sauber abgedeckt
+## Bug 3: `loop { return ... }` in nicht-void Funktionen ist nicht sauber abgedeckt
 
 Prioritaet: Hoch
 Bereich: Kontrollfluss/Terminatoren
@@ -201,7 +207,7 @@ Fix-Richtung:
 - `loop_end` nur erzeugen, wenn er erreichbar ist.
 - Alternativ Reachability in `finish_blocks` korrekt berechnen, bevor `MissingTerminator` gemeldet wird.
 
-## Bug 5: Doppelte Namen werden nicht frueh und konsistent abgelehnt
+## Bug 4: Doppelte Namen werden nicht frueh und konsistent abgelehnt
 
 Prioritaet: Mittel
 Bereich: Parser/Semantik
@@ -232,7 +238,7 @@ Fix-Richtung:
 - Pro Namensraum beim Parsen oder in einem expliziten Semantik-Pass ein `HashSet` fuehren.
 - Fehlerart fuer Duplicate-Parameter, Duplicate-Fields und Duplicate-Variant-Cases klar trennen.
 
-## Bug 6: Parser-only Feature `any` panickt im IR-Codegen
+## Bug 5: Parser-only Feature `any` panickt im IR-Codegen
 
 Prioritaet: Mittel
 Bereich: Unsupported-Feature-Handling
@@ -260,7 +266,7 @@ Fix-Richtung:
 - `CodegenError::UnsupportedFeature(...)` oder eine passende vorhandene Fehlerart verwenden.
 - Dieselbe Regel fuer Generics, Traits, Impl und andere Parser-only Features anwenden.
 
-## Bug 7: Malformed Float-Exponents werden als getrennte Tokens lexed
+## Bug 6: Malformed Float-Exponents werden als getrennte Tokens lexed
 
 Prioritaet: Mittel
 Bereich: Lexer/Fehlerqualitaet
@@ -288,7 +294,7 @@ Fix-Richtung:
 
 - Wenn direkt nach einer Zahl `e` oder `E` folgt, muss der Exponent komplett validiert oder als `InvalidNumber` gemeldet werden.
 
-## Bug 8: `--emit-ir` schreibt nicht auf denselben Stream wie andere Emit-Ausgaben
+## Bug 7: `--emit-ir` schreibt nicht auf denselben Stream wie andere Emit-Ausgaben
 
 Prioritaet: Niedrig bis Mittel
 Bereich: CLI/Manager
@@ -325,4 +331,4 @@ Nicht mehr als aktive Bugs fuehren:
 ## Zu verifizieren, sobald der Test-Build-Blocker weg ist
 
 - Unicode-Span-Test fuer Char-/String-Literale im `rython_to_ir`-Testcrate erneut ausfuehren. Die CLI-Ausgabe ist bereits gruen, der eigentliche Lexer-Test ist aktuell durch den Build-Blocker verdeckt.
-- Alle IR-Codegen-Tests nach Umstellung von `and/or` auf `&&/||` erneut ausfuehren; erst danach ist die genaue Zahl der roten Runtime-Semantiktests belastbar.
+- Alle IR-Codegen-Tests nach Umstellung von `and/or` auf `&&/||`, Entfernung/Abschwaechung der Short-Circuit-Erwartung und Umstellung der Shadowing-Tests erneut ausfuehren; erst danach ist die genaue Zahl der roten Runtime-Semantiktests belastbar.
