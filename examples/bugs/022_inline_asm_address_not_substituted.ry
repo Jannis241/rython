@@ -1,0 +1,12 @@
+// Bug: %&name should become an address temp, but only %name value replacement exists.
+// Current behavior: %&out remains raw text in emitted IR.
+
+fn main() int {
+    let out: int = 0;
+
+    asm {
+        mov [%&out], 1
+    };
+
+    return out;
+}

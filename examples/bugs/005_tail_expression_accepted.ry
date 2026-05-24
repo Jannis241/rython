@@ -1,0 +1,6 @@
+// Bug: tail expressions are not part of the target language.
+// Current behavior: this is accepted and converted into an implicit return.
+
+fn main() int {
+    1
+}

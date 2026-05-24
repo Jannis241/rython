@@ -1,0 +1,7 @@
+// Bug: unknown escapes in strings should be InvalidEscape.
+// Current behavior: the lexer accepts \q inside a string literal.
+
+fn main() {
+    let text: string = "bad\qescape";
+    return;
+}

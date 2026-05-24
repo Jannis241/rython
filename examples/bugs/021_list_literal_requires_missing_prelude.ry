@@ -1,0 +1,7 @@
+// Bug: list literals require a compiler-provided Core Stdlib/Prelude, but none is loaded.
+// Current behavior: list is an unknown type unless the user defines the whole runtime shape.
+
+fn main() {
+    let values: list = [1, 2, 3];
+    return;
+}

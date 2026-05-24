@@ -1,0 +1,10 @@
+// Bug: for parses but has no IR codegen arm.
+// Current behavior: codegen returns InvalidStatement.
+
+fn main() int {
+    for value in [1, 2, 3] {
+        let copy: int = value;
+    }
+
+    return 0;
+}

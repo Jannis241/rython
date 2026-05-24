@@ -1,0 +1,11 @@
+// Bug: void calls still emit a temp_id in IR Call.
+// Current behavior: run with --emit-ir and inspect the void call instruction.
+
+fn noop() {
+    return;
+}
+
+fn main() int {
+    noop();
+    return 0;
+}

@@ -1,0 +1,8 @@
+// Bug: import parses, but manager/codegen never loads modules and rejects Import items.
+// Current behavior: codegen returns InvalidItem.
+
+import app.math;
+
+fn main() int {
+    return 0;
+}

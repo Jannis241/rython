@@ -1,0 +1,6 @@
+// Bug: return must always end with a semicolon.
+// Current behavior: this is accepted before the closing brace.
+
+fn main() int {
+    return 1
+}

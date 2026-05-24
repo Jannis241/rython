@@ -1,0 +1,6 @@
+// Bug: non-void functions can finish without returning a value.
+// Current behavior: this compiles to Ret(None) in an int-returning function.
+
+fn main() int {
+    let value: int = 1;
+}

@@ -1,0 +1,12 @@
+// Bug: while expressions reach gen_while(), which is currently todo!().
+// Current behavior: this parses, then codegen panics.
+
+fn main() int {
+    let value: int = 0;
+
+    while value < 1 {
+        break;
+    };
+
+    return value;
+}

@@ -1,0 +1,10 @@
+// Bug: trait declarations parse but are rejected by IR codegen.
+// Current behavior: codegen returns InvalidItem.
+
+trait Display {
+    fn show(value: Self) string;
+}
+
+fn main() int {
+    return 0;
+}

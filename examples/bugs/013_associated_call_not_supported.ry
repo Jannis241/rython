@@ -1,0 +1,15 @@
+// Bug: Type::method(args) is target syntax, but only Type::Case is currently recognized.
+// Current behavior: parser/codegen does not resolve Point::new as an associated function.
+
+struct Point {
+    x: int,
+
+    fn new(x: int) Point {
+        return Point { x: x };
+    }
+}
+
+fn main() int {
+    let point: Point = Point::new(1);
+    return point.x;
+}

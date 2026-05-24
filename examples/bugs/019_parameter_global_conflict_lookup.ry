@@ -1,0 +1,8 @@
+// Bug: parameters are not checked against globals, and variable lookup checks globals before locals.
+// Current behavior: return x reads the global x instead of rejecting the parameter/global conflict.
+
+global x: int = 10;
+
+fn main(x: int) int {
+    return x;
+}

@@ -1,0 +1,16 @@
+// Bug: right-hand operator dispatch checks argument types in a different order
+// than the call argument order it emits.
+// Current behavior: this valid RHS-dispatch shape reports mismatched types.
+
+struct Number {
+    value: int,
+
+    fn operator + add(this, lhs: int) int {
+        return this.value + lhs;
+    }
+}
+
+fn main() int {
+    let number: Number = Number { value: 5 };
+    return 3 + number;
+}

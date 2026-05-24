@@ -1,0 +1,16 @@
+// Bug: impl blocks parse but are rejected by IR codegen.
+// Current behavior: codegen returns InvalidItem.
+
+struct Point {
+    x: int,
+}
+
+impl Display for Point {
+    fn show(value: Point) int {
+        return value.x;
+    }
+}
+
+fn main() int {
+    return 0;
+}

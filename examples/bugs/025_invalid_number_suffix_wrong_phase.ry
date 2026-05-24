@@ -1,0 +1,7 @@
+// Bug: invalid number suffixes should be lexer errors.
+// Current behavior: 123abc becomes Int(123) followed by Ident(abc), then parsing fails later.
+
+fn main() int {
+    let value: int = 123abc;
+    return value;
+}

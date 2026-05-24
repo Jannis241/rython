@@ -1,0 +1,12 @@
+// Bug: inline asm replacement only checks local variables.
+// Current behavior: %global_value reports UnknownVariable.
+
+global global_value: int = 1;
+
+fn main() {
+    asm {
+        mov rax, %global_value
+    };
+
+    return;
+}

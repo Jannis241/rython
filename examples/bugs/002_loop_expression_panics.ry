@@ -1,0 +1,10 @@
+// Bug: loop expressions reach gen_loop(), which is currently todo!().
+// Current behavior: this parses, then codegen panics.
+
+fn main() int {
+    loop {
+        break;
+    };
+
+    return 0;
+}

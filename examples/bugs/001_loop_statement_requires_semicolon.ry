@@ -1,0 +1,12 @@
+// Bug: while/loop are target statements, but today they are parsed only as expressions.
+// Current behavior: parser expects a semicolon after the while block.
+
+fn main() int {
+    let value: int = 0;
+
+    while value < 3 {
+        value++;
+    }
+
+    return value;
+}

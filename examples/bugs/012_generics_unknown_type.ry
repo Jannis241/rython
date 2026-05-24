@@ -1,0 +1,10 @@
+// Bug: generic parameters parse but are not monomorphized or resolved.
+// Current behavior: T is treated as an unknown type.
+
+fn identity<T>(value: T) T {
+    return value;
+}
+
+fn main() int {
+    return identity(1);
+}

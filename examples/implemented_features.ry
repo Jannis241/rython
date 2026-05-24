@@ -1,0 +1,140 @@
+const max_value: int = 100;
+const enabled: bool = true;
+const marker: char = 'r';
+const scale: float = 2.5;
+
+global counter: int = 3;
+
+variant Status {
+    Ready,
+    Done,
+}
+
+struct Point {
+    x: int,
+    y: int,
+
+    fn add(this, other: Point) Point {
+        return Point {
+            x: this.x + other.x,
+            y: this.y + other.y,
+        };
+    }
+
+    fn move_by(this, dx: int, dy: int) Point {
+        this.x += dx;
+        this.y += dy;
+        return this;
+    }
+
+    fn length_squared(this) int {
+        return this.x * this.x + this.y * this.y;
+    }
+
+    fn operator + add_op(this, rhs: Point) Point {
+        return this.add(rhs);
+    }
+
+    fn operator - neg(this) Point {
+        return Point {
+            x: -this.x,
+            y: -this.y,
+        };
+    }
+
+    fn operator [] get(this, index: int) int {
+        if index == 0 {
+            return this.x;
+        } else {
+            return this.y;
+        }
+    }
+}
+
+fn void_call(value: int) {
+    let local: int = value;
+
+    asm {
+        mov %local, %value
+    };
+
+    return;
+}
+
+fn arithmetic(a: int, b: int) int {
+    let value: int = a + b * 2 - 1;
+    let bits: int = ((value << 1) >> 1) ^ (b | 1);
+    let masked: int = bits & 255;
+    let remainder: int = masked % 17;
+    let negative: int = -remainder;
+    let restored: int = negative + remainder + masked;
+
+    return restored;
+}
+
+fn booleans(a: int, b: int) bool {
+    let same: bool = a == b;
+    let different: bool = a != b;
+    let ordered: bool = a < b || a <= b || a > b || a >= b;
+    let result: bool = enabled && !same && (different || ordered);
+
+    return result;
+}
+
+fn mutable_locals() int {
+    let value: int = 10;
+    value += 5;
+    value -= 3;
+    value *= 2;
+    value /= 4;
+    value++;
+    value--;
+
+    return value;
+}
+
+fn status_from_flag(flag: bool) Status {
+    if flag {
+        return Status::Done;
+    } else {
+        return Status::Ready;
+    }
+}
+
+fn scoped_value(input: int) int {
+    let value: int = input;
+
+    {
+        let inner: int = value + 1;
+        void_call(inner);
+    }
+
+    return value;
+}
+
+fn main() int {
+    let a: Point = Point { x: 3, y: 4 };
+    let b: Point = Point { x: 5, y: 6 };
+    let c: Point = (a + b).move_by(1, -2);
+    let d: Point = -c;
+
+    let first: int = d[0];
+    let second: int = d.y;
+    let length: int = d.length_squared();
+    let mixed: int = arithmetic(first + second, length);
+    let local: int = mutable_locals();
+    let ok: bool = booleans(mixed, max_value);
+    let status: Status = status_from_flag(ok);
+    let char_value: char = marker;
+    let float_value: float = scale;
+
+    counter = counter + local;
+    void_call(counter);
+    scoped_value(counter);
+
+    if status == Status::Done {
+        return max_value;
+    } else {
+        return mixed + counter;
+    }
+}

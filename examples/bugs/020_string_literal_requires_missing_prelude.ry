@@ -1,0 +1,7 @@
+// Bug: string literals require a compiler-provided Core Stdlib/Prelude, but none is loaded.
+// Current behavior: string is an unknown type unless the user defines the whole runtime shape.
+
+fn main() {
+    let text: string = "hello";
+    return;
+}

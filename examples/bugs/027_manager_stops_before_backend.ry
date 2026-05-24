@@ -1,0 +1,6 @@
+// Bug: manager returns success after IR generation instead of reaching the IR-to-ASM backend stub.
+// Current behavior: running this without --emit-ir still prints exit code 0.
+
+fn main() int {
+    return 0;
+}

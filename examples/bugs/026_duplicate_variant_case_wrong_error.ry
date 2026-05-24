@@ -1,0 +1,11 @@
+// Bug: duplicate variant cases report the wrong error category.
+// Current behavior: this reports DuplicateField instead of a variant/case duplicate.
+
+variant Result {
+    Ok,
+    Ok,
+}
+
+fn main() int {
+    return 0;
+}

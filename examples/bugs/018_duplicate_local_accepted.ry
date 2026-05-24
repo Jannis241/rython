@@ -1,0 +1,8 @@
+// Bug: duplicate local variables in the same scope overwrite the previous symbol.
+// Current behavior: this is accepted.
+
+fn main() int {
+    let value: int = 1;
+    let value: int = 2;
+    return value;
+}

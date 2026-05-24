@@ -1,0 +1,227 @@
+import std.io;
+import std.mem;
+import std.iter;
+import app.math.vector;
+
+const max_score: int = 100;
+const greeting: string = "hello rython";
+
+global runs: int = 0;
+
+trait Display {
+    fn show(value: Self) string;
+}
+
+trait Iterator<T> {
+    fn next(this) Next<T>;
+}
+
+trait Iterable<T> {
+    fn iter(this) any Iterator<T>;
+}
+
+trait Add<Rhs, Output> {
+    fn operator + add(this, rhs: Rhs) Output;
+}
+
+variant NextState {
+    Some,
+    None,
+}
+
+variant ResultState {
+    Ok,
+    Err,
+}
+
+struct Next<T> {
+    state: NextState,
+    value: T,
+}
+
+struct Vec2 {
+    x: int,
+    y: int,
+
+    fn new(x: int, y: int) Self {
+        return Self { x: x, y: y };
+    }
+
+    fn zero() Self {
+        return Self::new(0, 0);
+    }
+
+    fn length_squared(this) int {
+        return this.x * this.x + this.y * this.y;
+    }
+
+    fn move_by(this, dx: int, dy: int) Self {
+        this.x += dx;
+        this.y += dy;
+        return this;
+    }
+
+    fn operator + add(this, rhs: Self) Self {
+        return Self {
+            x: this.x + rhs.x,
+            y: this.y + rhs.y,
+        };
+    }
+
+    fn operator - neg(this) Self {
+        return Self {
+            x: -this.x,
+            y: -this.y,
+        };
+    }
+
+    fn operator [] get(this, index: int) int {
+        if index == 0 {
+            return this.x;
+        } else {
+            return this.y;
+        }
+    }
+}
+
+impl Display for Vec2 {
+    fn show(value: Self) string {
+        return "Vec2";
+    }
+}
+
+struct Box<T> {
+    value: T,
+
+    fn new(value: T) Self {
+        return Self { value: value };
+    }
+
+    fn unwrap(this) T {
+        return this.value;
+    }
+}
+
+fn identity<T>(value: T) T {
+    return value;
+}
+
+fn clamp<T: Ord>(value: T, min: T, max: T) T {
+    if value < min {
+        return min;
+    } else if value > max {
+        return max;
+    } else {
+        return value;
+    }
+}
+
+fn print_display<T: Display>(value: T) {
+    let text: string = T::show(value);
+    print(text);
+    return;
+}
+
+fn block_value(flag: bool) int {
+    let value: int = {
+        if flag {
+            yield 10;
+        } else {
+            yield 20;
+        }
+    };
+
+    return value;
+}
+
+fn count_until(limit: int) int {
+    let i: int = 0;
+    let sum: int = 0;
+
+    while i < limit {
+        i++;
+
+        if i == 3 {
+            continue;
+        }
+
+        sum += i;
+
+        if sum > 30 {
+            break;
+        }
+    }
+
+    return sum;
+}
+
+fn first_large(values: list<int>) ResultState {
+    for value in values {
+        if value > 10 {
+            return ResultState::Ok;
+        }
+    }
+
+    return ResultState::Err;
+}
+
+fn loop_expression(seed: int) int {
+    let current: int = seed;
+    let found: int = loop {
+        current++;
+
+        if current > 10 {
+            yield current;
+        }
+    };
+
+    return found;
+}
+
+fn inline_assembly(value: int) int {
+    let out: int = 0;
+
+    asm {
+        mov rax, %value
+        mov [%&out], rax
+    };
+
+    return out;
+}
+
+fn strings_and_lists() int {
+    let message: string = "hello";
+    let chars: list<char> = ['r', 'y'];
+    let numbers: list<int> = [1, 2, 3, 4];
+
+    print(message);
+    chars.push('!');
+    numbers.push(5);
+
+    return numbers.length;
+}
+
+fn main() int {
+    runs += 1;
+
+    let start: Vec2 = Vec2::new(2, 3);
+    let step: Vec2 = Vec2::new(4, 1);
+    let moved: Vec2 = (start + step).move_by(1, -2);
+    let boxed: Box<Vec2> = Box::new(moved);
+    let unboxed: Vec2 = boxed.unwrap();
+    let selected: int = unboxed[0] + unboxed.y;
+    let counted: int = count_until(8);
+    let looped: int = loop_expression(counted);
+    let blocked: int = block_value(selected > 0);
+    let literal_count: int = strings_and_lists();
+    let asm_value: int = inline_assembly(looped);
+    let maybe_large: ResultState = first_large([selected, counted, looped]);
+
+    print_display(unboxed);
+
+    if maybe_large == ResultState::Err {
+        return clamp(selected + blocked + literal_count + asm_value, 0, max_score);
+    } else {
+        return max_score;
+    }
+}

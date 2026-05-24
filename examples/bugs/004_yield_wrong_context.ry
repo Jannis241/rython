@@ -1,0 +1,7 @@
+// Bug: yield is supposed to return from the nearest value block.
+// Current behavior: yield is tied to loop_stack and errors outside a loop.
+
+fn main() int {
+    yield 1;
+    return 0;
+}

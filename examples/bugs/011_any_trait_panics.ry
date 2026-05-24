@@ -1,0 +1,10 @@
+// Bug: any Trait parses, but Type::AnyTrait reaches todo!() in convert_to_ir_type().
+// Current behavior: codegen panics.
+
+fn accept_display(value: any Display) {
+    return;
+}
+
+fn main() {
+    return;
+}

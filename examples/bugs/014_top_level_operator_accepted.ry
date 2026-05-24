@@ -1,0 +1,10 @@
+// Bug: operator overloads should only be valid as struct methods.
+// Current behavior: this top-level operator function is accepted.
+
+fn operator + add(left: int, right: int) int {
+    return left + right;
+}
+
+fn main() int {
+    return add(1, 2);
+}
