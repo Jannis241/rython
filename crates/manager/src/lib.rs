@@ -1,3 +1,3 @@
-pub mod claude_print_ir;
+pub mod ir_printer;
 pub mod read_file;
 pub mod run;

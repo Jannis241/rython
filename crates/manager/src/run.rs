@@ -1,4 +1,4 @@
-use crate::claude_print_ir;
+use crate::ir_printer;
 use crate::read_file;
 use ir_to_assembly::codegen as asmcodegen;
 // use ir_to_assembly::codegen::AsmCodeGenErr;
@@ -146,7 +146,7 @@ pub fn run(file_name: &str, options: &BuildOptions) -> Result<i32, BuildError> {
     let module = codegen::generate_code(&ast).map_err(BuildError::IrCodegen)?;
 
     if options.emit_ir {
-        claude_print_ir::print_ir(&module);
+        ir_printer::print_ir(&module);
     }
     Ok(0)
 
