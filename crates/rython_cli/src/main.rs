@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use manager::run::{BuildOptions, run};
-use rython_to_ir::ast::Let;
+use rython_to_ir::{ast::Let, lexer::LexingError};
 
 const USAGE: &str = "\
 usage: rython_cli [OPTIONS] <your_program.ry>
